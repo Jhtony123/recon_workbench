@@ -1,1 +1,230 @@
-{"meta": {"name": "recon_workbench Code Map", "version": "1.0.0", "generated": "2026-11-16", "description": "对账工作台插件代码结构机器可读索引（参照 AI_RPA docs/codemap 规范）", "reference_project": "E:/AIcoding_project/codex/AI_RPA/docs/codemap"}, "entry_points": {"job_entry": {"path": "run.py", "description": "Extension Job 入口；stage=bill 真执行，match/cost/writeback/chuanyun/full 返回 deferred 占位"}, "mcp_actions": {"path": "actions.py", "description": "23 个 MCP 工具的后端实现（config.json mcp_tools 声明驱动）"}, "config_ssot": {"path": "config.json", "description": "工具声明/UI 页面/能力开关/表前缀；改工具先改这里"}, "orchestrator": {"path": "core/pipeline.py", "description": "run_bill → 唯品会多旬分发(_vip_expand_xuns/_vip_run_xuns) → _run_bill_single；jd 只给 period 自动推上月末~月末"}, "platform_registry": {"path": "core/platforms/registry.py", "description": "_ADAPTERS 11 平台注册；GenericAdapter 规则表兜底"}, "rules_store": {"path": "core/rules_store.py", "description": "rules/{platform}.json 文件态规则；原子写+mtime缓存；损坏显式报错"}, "artifacts": {"path": "core/artifacts.py", "description": "批次目录命名(YYYY-MM-平台-店铺-编号,重跑覆盖;vip两层累积;akc无店铺段)/manifest/表格落盘/clear_history(scoped)"}, "ui": {"path": "ui/index.html + ui/app.js", "description": "vanilla 只读看板；对账总览含清空历史人工按钮(两步确认)"}, "skill_docs": {"path": "skills/recon_assist/", "description": "AI 运行时说明书 + references/ 12 份平台漂移文档"}}, "modules": {"core/platforms": {"files": ["base.py", "registry.py", "taobao.py", "douyin.py", "jd.py", "pdd.py", "kuaishou.py", "sph.py", "xhs.py", "youzan.py", "hyk.py", "akc.py", "vip.py"], "description": "base=三步流水线骨架+zip解压+规则消费(biz_code_map/prefixed_map/read_options/builtin_rules)；各平台差异在 clean/normalize/export_books"}, "core": {"files": ["pipeline.py", "pipeline_dormant.py", "artifacts.py", "rules_store.py", "exporters.py", "repo.py", "db.py", "storage.py(根)", "joblog.py", "money.py", "config.py", "errors.py", "pivots.py", "matching.py", "allocation.py", "cost.py", "writeback.py"], "description": "pipeline_dormant=SKU对账/成本/回传封存算法（启用须过 storage.ALLOWED_TABLES 白名单评审）；money=全程整数分"}, "rules": {"files": ["taobao.json", "douyin.json", "jd.json", "pdd.json", "kuaishou.json", "sph.json", "youzan.json", "hyk.json", "akc.json", "vip.json"], "description": "builtin-default 种子 259 条（2026-11-16 剥离）；副字典命名空间 wx_id:/wx_type:/brand:/shop:；种子脚本幂等不覆盖已改条目"}, "ui": {"files": ["index.html", "app.js", "styles.css"], "description": "9 页面 hash 路由；PAGE_LOADERS/bindAll；清空历史 clearHistoryFlow 两步确认"}, "docs": {"files": ["README.md", "codemap/", "bugfixlog/", "specs/"], "description": "开发迭代文档体系（本索引所在）"}}, "task_lookup": {"add_platform": {"paths": ["core/platforms/base.py", "core/platforms/registry.py", "scripts/seed_builtin_rules.py(工作区)"], "doc": "docs/specs/2026-11-16-batch2-platforms.md", "note": "新适配器三步：继承 BillAdapter→注册→种子规则；基准回归必跑"}, "platform_rules": {"paths": ["core/platforms/{name}.py", "skills/recon_assist/references/platform-{name}.md"], "note": "链序不可乱动；biz_code 整表接管语义"}, "rules_store": {"paths": ["core/rules_store.py", "core/platforms/base.py"], "note": "read_option 值支持 JSON；drop_tail 是清洗参数已被 _NON_PANDAS_READ_KEYS 过滤"}, "batch_layout": {"paths": ["core/artifacts.py"], "note": "build_batch_dir/parse_dir_name/_DIR_RE_NEW/_DIR_RE_VIP；vip 不清目录多旬累积"}, "zip_input": {"paths": ["core/platforms/base.py"], "note": "collect_files/_extract_zip(缓存+gb18030文件名+非法字符净化+防zip-slip)/expand_source_paths(纯zip目录才解压)"}, "vip_xuns": {"paths": ["core/pipeline.py", "core/platforms/vip.py"], "note": "旬名目录/zip 自动识别逐旬跑；底稿按旬子目录隔离(drafts_subdir)"}, "jd_window": {"paths": ["core/pipeline.py", "core/platforms/jd.py"], "note": "钱包+结算单必需；E卡交叉校验硬门；备注资金日期推断结算单账期"}, "export_format": {"paths": ["core/exporters.py", "core/platforms/*.py export_books"], "note": "影刀基准格式；file_name 特例(akc/vip 不含店铺)"}, "mcp_tool": {"paths": ["config.json", "actions.py"], "note": "read_only+sql_template 工具不经 actions.py（历史教训）"}, "ui_page": {"paths": ["ui/index.html", "ui/app.js"], "note": "改后 reload_extension_runtime + inspect_extension_ui"}, "clear_history": {"paths": ["actions.py", "core/artifacts.py", "ui/app.js"], "note": "confirm=yes 门；scoped 条件只删命中批次保留副本/留痕"}, "dormant_revive": {"paths": ["core/pipeline_dormant.py", "storage.py"], "note": "启用=方案评审：ALLOWED_TABLES 显式加表或改落 artifacts"}, "regression": {"paths": ["scripts/verify_export_baseline.py(工作区)", "scripts/verify_batch2.py(工作区)"], "note": "全部数值列合计比对防假绿；vip 大文件后台跑落日志"}, "bugfixlog": {"paths": ["docs/bugfixlog/"], "note": "修完可验证 bug 当天登记；index.json 同步"}}, "external_refs": {"baseline_dir": "E:/AIcoding_project/xbot_robot/历史运行结果/账单整理汇总/氚云导入成功", "raw_bills_dir": "E:/AIcoding_project/xbot_robot/历史运行结果/原始账单", "source_rpa": "E:/AIcoding_project/xbot_robot/bill_arr.py", "results_dir_custom": "C:/Users/贺杰/Desktop/账单（settings.results_dir）", "github_remote": "https://github.com/Jhtony123/recon_workbench.git"}}
+{
+  "meta": {
+    "name": "recon_workbench Code Map",
+    "version": "1.0.0",
+    "generated": "2026-11-16",
+    "description": "对账工作台插件代码结构机器可读索引（参照 AI_RPA docs/codemap 规范）",
+    "reference_project": "E:/AIcoding_project/codex/AI_RPA/docs/codemap"
+  },
+  "entry_points": {
+    "job_entry": {
+      "path": "run.py",
+      "description": "Extension Job 入口；stage=bill 真执行，match/cost/writeback/chuanyun/full 返回 deferred 占位"
+    },
+    "mcp_actions": {
+      "path": "actions.py",
+      "description": "23 个 MCP 工具的后端实现（config.json mcp_tools 声明驱动）"
+    },
+    "config_ssot": {
+      "path": "config.json",
+      "description": "工具声明/UI 页面/能力开关/表前缀；改工具先改这里"
+    },
+    "orchestrator": {
+      "path": "core/pipeline.py",
+      "description": "run_bill → 唯品会多旬分发(_vip_expand_xuns/_vip_run_xuns) → _run_bill_single；jd 只给 period 自动推上月末~月末"
+    },
+    "platform_registry": {
+      "path": "core/platforms/registry.py",
+      "description": "_ADAPTERS 11 平台注册；GenericAdapter 规则表兜底"
+    },
+    "rules_store": {
+      "path": "core/rules_store.py",
+      "description": "rules/{platform}.json 文件态规则；原子写+mtime缓存；损坏显式报错"
+    },
+    "artifacts": {
+      "path": "core/artifacts.py",
+      "description": "年月层布局 {results}/{YYYY-MM}/账单整理/{批次}（2026-11-16 全流程spec；bill_root/iter_batch_dirs 兼容旧根目录）；批次命名(YYYY-MM-平台-店铺-编号,重跑覆盖;vip两层累积;akc无店铺段)/manifest/表格落盘/clear_history(scoped,回收空年月层)"
+    },
+    "ui": {
+      "path": "ui/index.html + ui/app.js",
+      "description": "vanilla 只读看板；对账总览含清空历史人工按钮(两步确认)"
+    },
+    "skill_docs": {
+      "path": "skills/recon_assist/",
+      "description": "AI 运行时说明书 + references/ 12 份平台漂移文档"
+    }
+  },
+  "modules": {
+    "core/platforms": {
+      "files": [
+        "base.py",
+        "registry.py",
+        "taobao.py",
+        "douyin.py",
+        "jd.py",
+        "pdd.py",
+        "kuaishou.py",
+        "sph.py",
+        "xhs.py",
+        "youzan.py",
+        "hyk.py",
+        "akc.py",
+        "vip.py"
+      ],
+      "description": "base=三步流水线骨架+zip解压+规则消费(biz_code_map/prefixed_map/read_options/builtin_rules)；各平台差异在 clean/normalize/export_books"
+    },
+    "core": {
+      "files": [
+        "pipeline.py",
+        "pipeline_dormant.py",
+        "artifacts.py",
+        "rules_store.py",
+        "exporters.py",
+        "repo.py",
+        "db.py",
+        "storage.py(根)",
+        "joblog.py",
+        "money.py",
+        "config.py",
+        "errors.py",
+        "pivots.py",
+        "matching.py",
+        "allocation.py",
+        "cost.py",
+        "writeback.py"
+      ],
+      "description": "pipeline_dormant=SKU对账/成本/回传封存算法（启用须过 storage.ALLOWED_TABLES 白名单评审）；money=全程整数分"
+    },
+    "rules": {
+      "files": [
+        "taobao.json",
+        "douyin.json",
+        "jd.json",
+        "pdd.json",
+        "kuaishou.json",
+        "sph.json",
+        "youzan.json",
+        "hyk.json",
+        "akc.json",
+        "vip.json"
+      ],
+      "description": "builtin-default 种子 259 条（2026-11-16 剥离）；副字典命名空间 wx_id:/wx_type:/brand:/shop:；种子脚本幂等不覆盖已改条目"
+    },
+    "ui": {
+      "files": [
+        "index.html",
+        "app.js",
+        "styles.css"
+      ],
+      "description": "9 页面 hash 路由；PAGE_LOADERS/bindAll；清空历史 clearHistoryFlow 两步确认"
+    },
+    "docs": {
+      "files": [
+        "README.md",
+        "codemap/",
+        "bugfixlog/",
+        "specs/"
+      ],
+      "description": "开发迭代文档体系（本索引所在）"
+    }
+  },
+  "task_lookup": {
+    "add_platform": {
+      "paths": [
+        "core/platforms/base.py",
+        "core/platforms/registry.py",
+        "scripts/seed_builtin_rules.py(工作区)"
+      ],
+      "doc": "docs/specs/2026-11-16-batch2-platforms.md",
+      "note": "新适配器三步：继承 BillAdapter→注册→种子规则；基准回归必跑"
+    },
+    "platform_rules": {
+      "paths": [
+        "core/platforms/{name}.py",
+        "skills/recon_assist/references/platform-{name}.md"
+      ],
+      "note": "链序不可乱动；biz_code 整表接管语义"
+    },
+    "rules_store": {
+      "paths": [
+        "core/rules_store.py",
+        "core/platforms/base.py"
+      ],
+      "note": "read_option 值支持 JSON；drop_tail 是清洗参数已被 _NON_PANDAS_READ_KEYS 过滤"
+    },
+    "batch_layout": {
+      "paths": [
+        "core/artifacts.py",
+        "docs/specs/2026-11-16-sku-workflow-and-output-layout.md"
+      ],
+      "note": "bill_root/period_month/iter_batch_dirs（年月/账单整理 两层，兼容旧布局）；build_batch_dir/parse_dir_name；vip 不清目录多旬累积；同级预留 sku匹配/ 状态机（成功迁移失败留守）"
+    },
+    "zip_input": {
+      "paths": [
+        "core/platforms/base.py"
+      ],
+      "note": "collect_files/_extract_zip(缓存+gb18030文件名+非法字符净化+防zip-slip)/expand_source_paths(纯zip目录才解压)"
+    },
+    "vip_xuns": {
+      "paths": [
+        "core/pipeline.py",
+        "core/platforms/vip.py"
+      ],
+      "note": "旬名目录/zip 自动识别逐旬跑；底稿按旬子目录隔离(drafts_subdir)"
+    },
+    "jd_window": {
+      "paths": [
+        "core/pipeline.py",
+        "core/platforms/jd.py"
+      ],
+      "note": "钱包+结算单必需；E卡交叉校验硬门；备注资金日期推断结算单账期"
+    },
+    "export_format": {
+      "paths": [
+        "core/exporters.py",
+        "core/platforms/*.py export_books"
+      ],
+      "note": "影刀基准格式；file_name 特例(akc/vip 不含店铺)"
+    },
+    "mcp_tool": {
+      "paths": [
+        "config.json",
+        "actions.py"
+      ],
+      "note": "read_only+sql_template 工具不经 actions.py（历史教训）"
+    },
+    "ui_page": {
+      "paths": [
+        "ui/index.html",
+        "ui/app.js"
+      ],
+      "note": "改后 reload_extension_runtime + inspect_extension_ui"
+    },
+    "clear_history": {
+      "paths": [
+        "actions.py",
+        "core/artifacts.py",
+        "ui/app.js"
+      ],
+      "note": "confirm=yes 门；scoped 条件只删命中批次保留副本/留痕"
+    },
+    "dormant_revive": {
+      "paths": [
+        "core/pipeline_dormant.py",
+        "storage.py"
+      ],
+      "note": "启用=方案评审：ALLOWED_TABLES 显式加表或改落 artifacts"
+    },
+    "regression": {
+      "paths": [
+        "scripts/verify_export_baseline.py(工作区)",
+        "scripts/verify_batch2.py(工作区)",
+        "scripts/run_oct.py(10月批量+基准比对)"
+      ],
+      "note": "全部数值列合计比对防假绿；vip 大文件后台跑落日志"
+    },
+    "bugfixlog": {
+      "paths": [
+        "docs/bugfixlog/"
+      ],
+      "note": "修完可验证 bug 当天登记；index.json 同步"
+    }
+  },
+  "external_refs": {
+    "baseline_dir": "E:/AIcoding_project/xbot_robot/历史运行结果/账单整理汇总/氚云导入成功",
+    "raw_bills_dir": "E:/AIcoding_project/xbot_robot/历史运行结果/原始账单",
+    "source_rpa": "E:/AIcoding_project/xbot_robot/bill_arr.py",
+    "results_dir_custom": "C:/Users/贺杰/Desktop/账单（settings.results_dir）",
+    "github_remote": "https://github.com/Jhtony123/recon_workbench.git"
+  }
+}

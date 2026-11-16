@@ -32,7 +32,7 @@ Desktop 宿主 (sidecar :8765)
 | 新增平台适配器 | `core/platforms/base.py` 骨架 + `registry.py` 注册 + 种子脚本 | `add_platform` |
 | 改某平台分类口径 | `core/platforms/{name}.py` + `skills/.../platform-{name}.md` | `platform_rules` |
 | 改规则热修通道 | `core/rules_store.py` + `base.biz_code_map/prefixed_map/read_options` | `rules_store` |
-| 改输出目录/覆盖策略 | `core/artifacts.py` build_batch_dir / parse_dir_name | `batch_layout` |
+| 改输出目录/覆盖策略 | `core/artifacts.py` bill_root / build_batch_dir / iter_batch_dirs | `batch_layout` |
 | 改 zip 解压入口 | `core/platforms/base.py` collect_files / _extract_zip / expand_source_paths | `zip_input` |
 | 改唯品会多旬分发 | `core/pipeline.py` _vip_expand_xuns / _vip_run_xuns | `vip_xuns` |
 | 改京东日期窗口 | `core/pipeline.py` _run_bill_single 开头 jd 分支 | `jd_window` |
@@ -53,7 +53,7 @@ Desktop 宿主 (sidecar :8765)
 | 平台注册表 | `core/platforms/registry.py` `_ADAPTERS`（11 平台） |
 | 规则种子 | 工作区 `scripts/seed_builtin_rules.py`（幂等，不覆盖已改条目） |
 | 基准回归 | 工作区 `scripts/verify_export_baseline.py`（第一批）/ `verify_batch2.py`（第二批+vip） |
-| 结果落盘 | 用户自定义目录（settings.results_dir）→ `YYYY-MM-平台-店铺-编号/` |
+| 结果落盘 | 用户自定义目录（settings.results_dir）→ `YYYY-MM/账单整理/YYYY-MM-平台-店铺-编号/`（2026-11-16 全流程 spec；同级预留 sku匹配/ 状态机） |
 
 ## 维护约定
 

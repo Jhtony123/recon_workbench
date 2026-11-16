@@ -13,13 +13,15 @@
 两种格式列序与金额口径完全一致。一律通过 BillBatch.detail_path / goods_path
 或 read_detail() / read_goods() 访问，**不要自己拼 .parquet 后缀**。
 
-目录布局（每次运行一个带时间戳的批次目录，永不覆盖历史）：
-  results/
-    {period}_{platform}_账单整理_{shop_code}_{YYYYmmdd_HHMMSS}/
-      manifest.json                      批次元信息（口径、行数、货款合计、产物路径）
-      {platform}_{shop}_{period}_账单整理.xlsx   财务交付 Excel
-      bill_detail.parquet | .csv         账单标准行（金额单位=分，int64）
-      bill_goods.parquet | .csv          匹配层输入货款行（多源平台与 detail 不等价）
+目录布局（2026-11-16 全流程 spec：年月层 + 账单整理/sku匹配 分区）：
+  {results_root}/
+    {YYYY-MM}/                           年月 = 账期
+      账单整理/
+        {YYYY-MM-中文平台名-店铺名-店铺编号}/   批次目录（重跑覆盖；vip/akc 特例见 build_batch_dir）
+          {交付 Excel}                   批次根目录只放财务交付件
+          底稿/                          manifest.json / bill_detail / bill_goods / 统一明细等
+      sku匹配/                           SKU 对账启用后创建（未匹配成本→已匹配成本→已回传数据库）
+  旧布局（根目录直挂批次）仍兼容读取/清理，见 iter_batch_dirs。
 
 金额口径：表格内**一律存「分」的整数**（与旧库 *_fen 列同口径），
 导出 Excel 时才转元。读回时由 from_fen/fen_to_float 还原，避免 float 累加分位漂移。
@@ -46,6 +48,49 @@ MANIFEST_NAME = "manifest.json"
 #: 过程底稿子目录（2026-11-16 用户需求：批次目录只留财务交付 Excel，
 #: manifest / bill_detail / bill_goods / 统一明细 / E卡等过程产物一律进这里）
 DRAFTS_DIRNAME = "底稿"
+
+#: 年月层下的账单整理子目录（2026-11-16 全流程 spec：{results}/{YYYY-MM}/账单整理/{批次}；
+#: 同级预留 sku匹配/（未匹配成本→已匹配成本→已回传数据库 状态机，启用 SKU 对账时创建））
+BILL_DIRNAME = "账单整理"
+_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
+
+
+def period_month(period: str) -> str:
+    """账期 → 年月目录名（YYYY-MM）。解析不出时回落原值/未知账期，绝不落根目录。"""
+    p = str(period or "").strip()
+    m = re.match(r"^(\d{4}-\d{2})", p)
+    if m:
+        return m.group(1)
+    return p or "未知账期"
+
+
+def bill_root(period: str) -> Path:
+    """账单整理批次根：{results}/{YYYY-MM}/账单整理/（自动创建）。"""
+    d = output_dir() / period_month(period) / BILL_DIRNAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def iter_batch_dirs(root: Path) -> Iterable[Path]:
+    """枚举批次候选目录：新布局 {YYYY-MM}/账单整理/* + 旧布局根目录直挂（兼容）。
+
+    年月层只下钻 账单整理/，不碰 sku匹配/（那是 SKU 对账的状态机目录，
+    不属于账单整理历史，清空历史也不动它）。
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return
+    for d in sorted(root.iterdir()):
+        if not d.is_dir():
+            continue
+        if _MONTH_RE.match(d.name):
+            sub = d / BILL_DIRNAME
+            if sub.is_dir():
+                for b in sorted(sub.iterdir()):
+                    if b.is_dir():
+                        yield b
+        else:
+            yield d
 
 
 def manifest_path_for(batch_dir: Path) -> Path:
@@ -208,7 +253,8 @@ def build_batch_dir(period: str, platform: str, shop_code: str,
         name = f"{_safe(period)}-{display}-唯品中国"
     else:
         name = f"{_safe(period)}-{display}-{_safe(shop_name or shop_code)}-{_safe(shop_code)}"
-    d = output_dir() / name
+    # 2026-11-16 全流程 spec：批次落 {results}/{YYYY-MM}/账单整理/ 下（年月层）
+    d = bill_root(period) / name
     if d.is_dir() and platform != "vip":
         shutil.rmtree(d, ignore_errors=True)
     # 唯品会不清目录：一个账期多旬交付件在目录内累积，重跑同旬由导出同名覆盖；
@@ -413,9 +459,7 @@ def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") 
     for root in roots:
         if not root.is_dir():
             continue
-        for d in sorted(root.iterdir()):
-            if not d.is_dir():
-                continue
+        for d in iter_batch_dirs(root):
             # 新格式目录名可能撞用户手工目录：仅当平台名可识别或含 manifest 才认作批次
             m_new = _DIR_RE_NEW.match(d.name)
             known_display = False
@@ -447,6 +491,20 @@ def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") 
                 deleted.append(d.name)
             except OSError as exc:
                 errors.append(f"{d.name}: {exc}")
+        # 删完批次后回收空的 账单整理/ 与年月层（只删空目录，不碰 sku匹配/）
+        for d in sorted(root.iterdir()):
+            if d.is_dir() and _MONTH_RE.match(d.name):
+                sub = d / BILL_DIRNAME
+                if sub.is_dir() and not any(sub.iterdir()):
+                    try:
+                        sub.rmdir()
+                    except OSError:
+                        pass
+                if not any(d.iterdir()):
+                    try:
+                        d.rmdir()
+                    except OSError:
+                        pass
 
     dl_removed = 0
     log_removed = 0
@@ -490,9 +548,11 @@ def list_batches(
     if not root.is_dir():
         return []
     out: list[BillBatch] = []
-    for d in sorted(root.iterdir(), key=lambda p: p.name, reverse=True):
-        if not d.is_dir():
-            continue
+    # 新布局 {YYYY-MM}/账单整理/* 与旧布局根目录直挂一起枚举；
+    # 排序按「账期/目录名」倒序（年月层天然新→旧）
+    for d in sorted(iter_batch_dirs(root),
+                    key=lambda p: (p.parent.parent.name if _MONTH_RE.match(p.parent.parent.name) else "", p.name),
+                    reverse=True):
         meta = parse_dir_name(d.name)
         man = read_manifest(manifest_path_for(d))
         # 新目录名可能不含店铺段（vip/akc），筛选用 manifest 回落
@@ -545,9 +605,7 @@ def resolve_batch(
         target = str(batch_id).strip()
         root = output_dir()
         if root.is_dir():
-            for d in root.iterdir():
-                if not d.is_dir():
-                    continue
+            for d in iter_batch_dirs(root):
                 man = read_manifest(manifest_path_for(d))
                 if target in (str(man.get("batch_id") or ""), d.name):
                     meta = parse_dir_name(d.name)

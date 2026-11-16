@@ -162,7 +162,24 @@ def _append_or_replace(rec: dict[str, Any]) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(body)
-        os.replace(tmp, path)
+        # Windows 并发竞态（2026-11-16 十月双进程实测 WinError 5）：
+        # 另一进程/杀毒/索引器瞬时持有目标句柄时 os.replace 会拒绝访问。
+        # 留痕是辅助信息：短重试后仍失败则跳过本条，绝不让整理作业因留痕失败。
+        last_exc: BaseException | None = None
+        for attempt in range(5):
+            try:
+                os.replace(tmp, path)
+                last_exc = None
+                break
+            except OSError as exc:
+                last_exc = exc
+                time.sleep(0.15 * (attempt + 1))
+        if last_exc is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            return
     except BaseException:
         try:
             os.unlink(tmp)

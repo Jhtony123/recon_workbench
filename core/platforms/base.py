@@ -76,6 +76,11 @@ class ParseContext:
         """
         from ..config import period_label
 
+        # 京东特例（2026-11-16 十月实测）：s/e 是「上月末~月末」数据窗口（一天到账延迟），
+        # 文件名与账单周期标签必须用**账期**（基准 2026年10月-2026年10月），
+        # 否则跨月窗口把标签写成 09月-10月。数据窗口只用于过滤，不进业务标签。
+        if self.platform == "jd":
+            return period_label(self.period) or self.period
         return period_label(self.period, s_date=self.s_date, e_date=self.e_date) or self.period
 
 

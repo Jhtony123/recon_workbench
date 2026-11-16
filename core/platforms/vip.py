@@ -278,8 +278,10 @@ class VipAdapter(BillAdapter):
         df = pd.concat(parts, ignore_index=True)
 
         # 款号前缀规则覆盖品牌（原 check_sku_rule，顺序敏感）
+        # 2026-11-16 十月第三旬实测：StringDtype 下 astype("str") 的 NaN 仍是 float，
+        # len(kh) 崩 TypeError（与快手 NaN strip 同款坑）。先 fillna("") 再转 str。
         brands = df["品牌"].tolist()
-        for i, kh in enumerate(df["款号"].astype("str")):
+        for i, kh in enumerate(df["款号"].fillna("").astype(str)):
             if len(kh) >= 2:
                 if kh.startswith("8") and kh[1].isalpha():
                     brands[i] = "FR"

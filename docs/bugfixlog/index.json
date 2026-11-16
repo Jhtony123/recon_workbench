@@ -8,6 +8,30 @@
   },
   "entries": [
     {
+      "id": "2026-11-16-vip-nan-kh-len-typeerror",
+      "date": "2026-11-16",
+      "title": "唯品会款号前缀规则遇空款号 NaN 崩溃（StringDtype 同款坑，10月第三旬）",
+      "area": ["platform_rules"],
+      "status": "fixed",
+      "file": "2026-11-16/vip-nan-kh-len-typeerror.md"
+    },
+    {
+      "id": "2026-11-16-joblog-concurrent-replace-race",
+      "date": "2026-11-16",
+      "title": "双进程并发写 jobs.jsonl 的 os.replace 竞态拖垮整理作业（WinError 5）",
+      "area": ["rules_store"],
+      "status": "fixed",
+      "file": "2026-11-16/joblog-concurrent-replace-race.md"
+    },
+    {
+      "id": "2026-11-16-jd-filename-window-vs-period",
+      "date": "2026-11-16",
+      "title": "京东导出文件名用数据窗口月份而非账期（跨月窗口写成 09月-10月）",
+      "area": ["platform_rules", "export_format"],
+      "status": "fixed",
+      "file": "2026-11-16/jd-filename-window-vs-period.md"
+    },
+    {
       "id": "2026-11-16-settings-dir-readonly-no-edit-entry",
       "date": "2026-11-16",
       "title": "设置页存储路径设成自定义后无法再修改（AI 原生化改版误删编辑入口）",
