@@ -1,0 +1,16 @@
+{
+  "platform": "jd",
+  "version": 1,
+  "rules": {
+    "read_option": [
+      {
+        "key": "encoding",
+        "value": "gb18030",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      }
+    ]
+  },
+  "updated_at": "2026-11-16 15:53:24"
+}

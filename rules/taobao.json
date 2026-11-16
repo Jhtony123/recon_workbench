@@ -1,0 +1,1257 @@
+{
+  "platform": "taobao",
+  "version": 1,
+  "rules": {
+    "biz_code": [
+      {
+        "key": "0000000",
+        "value": "无分类",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0010001",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0010002",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0010003",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0010004",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0020001",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0020002",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0020011",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030001",
+        "value": "代扣返点积分",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030002",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030003",
+        "value": "天猫佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030006",
+        "value": "阿里健康天猫医药馆境内实时划扣软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030007",
+        "value": "聚划算佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "003000700002",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030018",
+        "value": "代扣返点积分",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030038",
+        "value": "支付服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "003003800001",
+        "value": "花呗支付服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030042",
+        "value": "品牌新享",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030064",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030088",
+        "value": "百亿补贴软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030129",
+        "value": "淘宝内容推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030130",
+        "value": "基础软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030133",
+        "value": "直播软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030162T",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0030178T",
+        "value": "淘宝服饰软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0050005",
+        "value": "卖家版运费险",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0050006",
+        "value": "运费险",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0050026",
+        "value": "交易保障险",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0060011",
+        "value": "淘宝客佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0060032",
+        "value": "百亿补贴推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0060053",
+        "value": "百亿补贴推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0060064",
+        "value": "U先直播A78推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0060083TI营销支出-百亿补贴推广服务费（日常直播&大牌补贴日）",
+        "value": "百亿补贴推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0060092T",
+        "value": "消费券代付资金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0070001",
+        "value": "淘宝消费者保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0070002",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0070023",
+        "value": "天猫佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008000200001",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008000200003",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008002800001",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008002800002",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008002800006",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008002800007",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008002800010",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008002800014",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008002800015",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "008002800018",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0080084T00001T",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0110001",
+        "value": "公益捐赠",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0160001",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0170038",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0170039",
+        "value": "急速回款服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0170040",
+        "value": "淘宝内容推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0170044T",
+        "value": "官方物流增值服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0170120T",
+        "value": "淘宝大促软件技术服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0170122T",
+        "value": "大服饰全球包邮跨境服务基础费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0170125T",
+        "value": "消费者体验提升计划服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0240004T",
+        "value": "天猫佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0400007",
+        "value": "代贴条码费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0400014",
+        "value": "其他增值服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0400025",
+        "value": "货物装卸费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0400096",
+        "value": "防护包装费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0400177",
+        "value": "组套费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0400178",
+        "value": "拆套费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0470003",
+        "value": "正向配送费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0470009",
+        "value": "逆向配送费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0470056",
+        "value": "配送运输费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0470061",
+        "value": "配送运输费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0470164",
+        "value": "配送运输费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0470325",
+        "value": "配送运输费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0480004",
+        "value": "退货入仓费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0480005",
+        "value": "仓内操作服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0480009",
+        "value": "仓内操作服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0480200",
+        "value": "仓内操作服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0480571",
+        "value": "仓内操作服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0530026",
+        "value": "经济优惠正向配送费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0530282T",
+        "value": "88VIP淘宝消费券技术服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0530288T",
+        "value": "大服饰跨境服务增值费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0530294T",
+        "value": "限时红包服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0530299T",
+        "value": "跨境服务基础费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0540001",
+        "value": "包装物料费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0560001",
+        "value": "仓储费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0560011",
+        "value": "仓储费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0560016",
+        "value": "仓储费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "0640003",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030001",
+        "value": "代扣返点积分",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030002",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030006",
+        "value": "阿里健康天猫医药馆境内实时划扣软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030007",
+        "value": "聚划算佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:003000700002",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030018",
+        "value": "代扣返点积分",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030038",
+        "value": "支付服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:003003800001",
+        "value": "花呗支付服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030042",
+        "value": "品牌新享",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030064",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030088",
+        "value": "百亿补贴软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030129",
+        "value": "淘宝内容推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030130",
+        "value": "基础软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030133",
+        "value": "直播软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030162T",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0030178T",
+        "value": "淘宝服饰软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0050005",
+        "value": "卖家版运费险",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0050006",
+        "value": "运费险",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0050026",
+        "value": "交易保障险",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0060011",
+        "value": "淘宝客佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0060032",
+        "value": "百亿补贴推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0060053",
+        "value": "百亿补贴推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0060064",
+        "value": "U先直播A78推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0060083TI营销支出-百亿补贴推广服务费（日常直播&大牌补贴日）",
+        "value": "百亿补贴推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0060092T",
+        "value": "消费券代付资金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0070001",
+        "value": "淘宝消费者保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0070002",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0070023",
+        "value": "天猫佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008000200001",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008000200003",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008002800001",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008002800002",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008002800006",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008002800007",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008002800010",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008002800014",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008002800015",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:008002800018",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0080084T00001T",
+        "value": "天猫保证金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0110001",
+        "value": "公益捐赠",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0170038",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0170039",
+        "value": "急速回款服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0170040",
+        "value": "淘宝内容推广服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0170044T",
+        "value": "官方物流增值服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0170120T",
+        "value": "淘宝大促软件技术服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0170122T",
+        "value": "大服饰全球包邮跨境服务基础费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0170125T",
+        "value": "消费者体验提升计划服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0240004T",
+        "value": "天猫佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0400007",
+        "value": "代贴条码费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0400014",
+        "value": "其他增值服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0400025",
+        "value": "货物装卸费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0400096",
+        "value": "防护包装费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0400177",
+        "value": "组套费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0400178",
+        "value": "拆套费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0470003",
+        "value": "正向配送费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0470009",
+        "value": "逆向配送费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0470056",
+        "value": "配送运输费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0470061",
+        "value": "配送运输费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "wx_id:0470164",
+        "value": "配送运输费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0470325",
+        "value": "配送运输费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0480004",
+        "value": "退货入仓费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0480005",
+        "value": "仓内操作服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0480009",
+        "value": "仓内操作服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0480200",
+        "value": "仓内操作服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0480571",
+        "value": "仓内操作服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0530026",
+        "value": "经济优惠正向配送费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0530282T",
+        "value": "88VIP淘宝消费券技术服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0530288T",
+        "value": "大服饰跨境服务增值费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0530294T",
+        "value": "限时红包服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0530299T",
+        "value": "跨境服务基础费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0540001",
+        "value": "包装物料费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0560001",
+        "value": "仓储费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0560011",
+        "value": "仓储费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:0560016",
+        "value": "仓储费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:交易退款-售中退款",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:记账本转账",
+        "value": "小额打款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_id:软件服务费-品牌直播大场营销软件服务费",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:交易收款",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:交易退款(售后)",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:企业付款",
+        "value": "售后快赔",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:充值",
+        "value": "充值",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:分账",
+        "value": "佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:扣除交易手续费",
+        "value": "账扣",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:提现",
+        "value": "提现",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:提现失败退款",
+        "value": "提现",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "wx_type:账户间转账",
+        "value": "资金调拨",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "交易退款-售中退款",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "记账本转账",
+        "value": "小额打款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "软件服务费-品牌直播大场营销软件服务费",
+        "value": "软件服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      }
+    ],
+    "read_option": [
+      {
+        "key": "drop_tail",
+        "value": "4",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "dtype",
+        "value": "{\"账务流水号\": \"str\", \"业务描述\": \"str\", \"业务基础订单号\": \"str\", \"收入金额（+元）\": \"str\", \"支出金额（-元）\": \"str\"}",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "encoding",
+        "value": "gb18030",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "skiprows",
+        "value": "4",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      }
+    ]
+  },
+  "updated_at": "2026-11-16 15:53:25"
+}

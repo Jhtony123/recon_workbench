@@ -1,0 +1,123 @@
+{
+  "platform": "sph",
+  "version": 1,
+  "rules": {
+    "biz_code": [
+      {
+        "key": "充值",
+        "value": "充值",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "回补极速退款垫资",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "平台优惠补贴",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "平台现金券优惠",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "平台赔付",
+        "value": "平台赔付",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "技术服务费",
+        "value": "技术服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "提现",
+        "value": "提现",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "服务充值账户充值",
+        "value": "服务充值",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "极速退款垫资",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "订单交易｜先用后付",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "订单支付",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "订单结算",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "订单退款",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "达人佣金",
+        "value": "达人佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "运费险",
+        "value": "运费险",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      }
+    ],
+    "read_option": [
+      {
+        "key": "dtype",
+        "value": "{\"关联订单号\": \"str\", \"流水单号\": \"str\", \"关联售后单号\": \"str\"}",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      }
+    ]
+  },
+  "updated_at": "2026-11-16 15:53:24"
+}

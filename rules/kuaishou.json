@@ -1,0 +1,46 @@
+{
+  "platform": "kuaishou",
+  "version": 1,
+  "rules": {
+    "biz_code": [
+      {
+        "key": "余额提现",
+        "value": "提现",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "结算后退款",
+        "value": "交易货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "货款结算",
+        "value": "交易货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      }
+    ],
+    "read_option": [
+      {
+        "key": "dtype",
+        "value": "{\"账务流水号\": \"str\", \"关联业务单号\": \"str\", \"入账时间\": \"str\", \"备注\": \"str\"}",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "encoding",
+        "value": "gb18030",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      }
+    ]
+  },
+  "updated_at": "2026-11-16 15:53:24"
+}

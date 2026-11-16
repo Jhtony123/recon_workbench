@@ -1,0 +1,249 @@
+{
+  "name": "recon_workbench",
+  "version": "0.2.0",
+  "display_name": "对账工作台",
+  "description": "电商财务月度对账工作台（2026-11-14 方案改版）：数据库只存店铺映射；账单整理可用并把结果落文件（Excel + parquet），SKU对账 / 成本匹配 / 数据库回传 / 氚云对接为占位暂缓。承接原影刀RPA「资金账单匹配sku对账」，去 xbot 依赖、模块化分层、凭据走环境变量。",
+  "entry_script": "run.py",
+  "allowed_domains": ["127.0.0.1"],
+  "table_prefix": "ext_recon_workbench_",
+  "job_lock_name": "recon_workbench.job",
+  "ui_entry": "ui/index.html",
+  "ui": {
+    "mode": "custom",
+    "framework": "vanilla",
+    "pages": [
+      { "id": "home", "title": "对账总览", "hash": "#/home", "default": true },
+      { "id": "bill", "title": "账单整理", "hash": "#/bill" },
+      { "id": "match", "title": "SKU对账（暂缓）", "hash": "#/match" },
+      { "id": "cost", "title": "成本匹配（暂缓）", "hash": "#/cost" },
+      { "id": "writeback", "title": "数据库回传（暂缓）", "hash": "#/writeback" },
+      { "id": "chuanyun", "title": "氚云对接（暂缓）", "hash": "#/chuanyun" },
+      { "id": "sources", "title": "数据源与规则", "hash": "#/sources" },
+      { "id": "jobs", "title": "作业与日志", "hash": "#/jobs" },
+      { "id": "settings", "title": "设置", "hash": "#/settings" }
+    ]
+  },
+  "activate_group": "ext_recon_workbench",
+  "skills": ["recon_assist"],
+  "ai_collab": { "design_mode": true },
+  "data_dir_policy": "both",
+  "auth": {
+    "mode": "none",
+    "profile": "",
+    "login_url": "",
+    "domains": []
+  },
+  "sources": [
+    {
+      "id": "primary",
+      "type": "plugin_script",
+      "label": "平台账单整理（本地文件 → Excel + parquet，不入库）",
+      "config": {}
+    },
+    {
+      "id": "upload",
+      "type": "local_upload",
+      "label": "本地账单 / 店铺表上传",
+      "config": {}
+    }
+  ],
+  "task_links": {
+    "task_id": "",
+    "script_name": "",
+    "on_job": "none"
+  },
+  "async_hooks": {
+    "on_start": "notify_ui",
+    "on_progress": "notify_ui",
+    "on_finish": "notify_ui"
+  },
+  "mcp_tools": [
+    {
+      "name": "recon_workbench__capability_status",
+      "description": "五个能力的开放状态：账单整理可用；SKU对账/成本匹配/数据库回传/氚云对接占位暂缓（含启用条件与休眠代码位置）。问「现在能做什么」先看它。",
+      "permission": "action",
+      "action": "capability_status",
+      "params": [],
+      "max_rows": 20
+    },
+    {
+      "name": "recon_workbench__overview",
+      "description": "对账总览：账单整理批次与行数、平台与账期覆盖、店铺映射与规则条数、最近批次。改版后不含匹配率（SKU对账暂缓）。",
+      "permission": "action",
+      "action": "overview",
+      "params": ["days"],
+      "max_rows": 60
+    },
+    {
+      "name": "recon_workbench__data_status",
+      "description": "插件数据态：数据库只剩店铺映射表的行数，加上文件态的账单批次/规则文件/作业留痕条数。用于判断有没有数据与新鲜度。",
+      "permission": "action",
+      "action": "data_status",
+      "params": [],
+      "max_rows": 60
+    },
+    {
+      "name": "recon_workbench__db_status",
+      "description": "巨益数据库连通性与凭据环境变量状态（不暴露口令）。账单整理不需要数据库，仅 SKU对账/回传启用后才需要。",
+      "permission": "action",
+      "action": "db_status",
+      "params": [],
+      "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__platforms",
+      "description": "已接入平台清单与各自需要的附加数据源（如京东 E卡/钱包、淘系微信支付）。",
+      "permission": "action",
+      "action": "platforms",
+      "params": [],
+      "max_rows": 40
+    },
+    {
+      "name": "recon_workbench__start_recon",
+      "description": "触发账单整理作业（异步 Job）。仅 stage=bill 会执行；match/cost/writeback/chuanyun/full 返回 status=deferred 占位终态，不启动作业、不写数据。需 platform、shop_code、period 或 s_date+e_date、file_paths。",
+      "permission": "action",
+      "action": "start_recon",
+      "params": [
+        "stage", "platform", "shop_code", "period", "s_date", "e_date",
+        "file_paths", "extra_files", "export", "agent_session_id"
+      ],
+      "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__job_status",
+      "description": "查询对账作业进度/终态；不传 job_id 返回最近一次。",
+      "permission": "action",
+      "action": "job_status",
+      "params": ["job_id"],
+      "max_rows": 10
+    },
+    {
+      "name": "recon_workbench__preview_bill",
+      "description": "账单解析试跑（不落盘、不入库）：读文件→清洗→归一，返回列名与前 N 行。改规则或新增平台后先用它验证映射。",
+      "permission": "action",
+      "action": "preview_bill",
+      "params": ["platform", "file_paths", "limit"],
+      "max_rows": 40
+    },
+    {
+      "name": "recon_workbench__bill_batches",
+      "description": "账单整理批次清单（扫 results/ 目录，新→旧）：账期/平台/店铺/行数/货款合计/Excel与parquet路径。数据库里没有账单结果。",
+      "permission": "action",
+      "action": "bill_batches",
+      "params": ["period", "platform", "shop_code", "limit"],
+      "max_rows": 60
+    },
+    {
+      "name": "recon_workbench__query_bill_rows",
+      "description": "账单标准行查询（读 parquet，金额已转元）。只返回单个批次：未指定 batch_id 时取该范围内最新一次整理。",
+      "permission": "action",
+      "action": "query_bill_rows",
+      "params": ["batch_id", "period", "platform", "shop_code", "limit"],
+      "max_rows": 200
+    },
+    {
+      "name": "recon_workbench__query_job_log",
+      "description": "作业留痕查询（读 logs/jobs.jsonl，新→旧）：批次、阶段、状态、行数、耗时。留痕已移出数据库。",
+      "permission": "action",
+      "action": "query_job_log",
+      "params": ["limit"],
+      "max_rows": 100
+    },
+    {
+      "name": "recon_workbench__query_rules",
+      "description": "查询平台解析规则（column_map 列名映射 / biz_code 业务编码字典 / read_option 读取参数 / filter / amount_sign）。数据源是 rules/{platform}.json 文件，不在数据库。",
+      "permission": "action",
+      "action": "query_rules",
+      "params": ["platform", "active_only", "limit"],
+      "max_rows": 300
+    },
+    {
+      "name": "recon_workbench__upsert_rule",
+      "description": "新增/修改一条平台解析规则并写入规则文件。rule_kind ∈ column_map|filter|amount_sign|biz_code|read_option。例：platform=taobao, rule_kind=biz_code, rule_key=0010001, rule_value=货款。",
+      "permission": "action",
+      "action": "upsert_rule",
+      "params": ["platform", "rule_kind", "rule_key", "rule_value", "note", "active"],
+      "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__delete_rule",
+      "description": "停用一条平台解析规则（置 active=0，保留条目便于追溯）。",
+      "permission": "action",
+      "action": "delete_rule",
+      "params": ["platform", "rule_kind", "rule_key"],
+      "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__load_shop_file",
+      "description": "导入店铺信息表（Excel，需含 shopCode 列）到本地库的店铺映射表 —— 数据库唯一保留的数据，带版本留痕。",
+      "permission": "action",
+      "action": "load_shop_file",
+      "params": ["file_path", "version"],
+      "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__shops",
+      "description": "店铺清单查询（按编码或名称模糊筛选），供选择店铺编码。",
+      "permission": "action",
+      "action": "shops",
+      "params": ["keyword", "limit"],
+      "max_rows": 300
+    },
+    {
+      "name": "recon_workbench__sku_match",
+      "description": "SKU对账（占位暂缓）：调用返回 status=deferred 与启用条件说明，不执行任何计算、不写数据。算法封存在 core/pipeline_dormant.py。",
+      "permission": "action",
+      "action": "sku_match",
+      "params": [],
+      "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__cost_match",
+      "description": "成本匹配（占位暂缓）：调用返回 status=deferred 与启用条件说明，不执行任何计算、不写数据。",
+      "permission": "action",
+      "action": "cost_match",
+      "params": [],
+      "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__writeback",
+      "description": "数据库回传（占位暂缓）：调用返回 status=deferred，不会修改生产库任何对账标记。",
+      "permission": "action",
+      "action": "writeback",
+      "params": [],
+      "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__get_settings",
+      "description": "读插件设置：结果存储路径（自定义/默认）与当前生效目录。设置存 settings.json，不进数据库。",
+      "permission": "action",
+      "action": "get_settings",
+      "params": [],
+      "max_rows": 10
+    },
+    {
+      "name": "recon_workbench__save_settings",
+      "description": "保存设置。results_dir=自定义结果存储绝对路径（校验可写后生效，下次整理落到该目录）；传空串恢复默认目录。",
+      "permission": "action",
+      "action": "save_settings",
+      "params": ["results_dir"],
+      "max_rows": 10
+    },
+    {
+      "name": "recon_workbench__clear_history",
+      "description": "清空账单整理历史（批次结果目录+downloads下载副本+作业留痕），保留店铺映射/规则/设置。必须传 confirm=yes 才执行，不可恢复（AI 须先向用户确认）。可选 period/platform/shop_code 按条件只删命中批次（此时下载副本与留痕保留）；全空则全清。",
+      "permission": "action",
+      "action": "clear_history",
+      "params": ["confirm", "period", "platform", "shop_code"],
+      "max_rows": 10
+    },
+    {
+      "name": "recon_workbench__chuanyun_sync",
+      "description": "氚云对接（占位暂缓）：调用返回 status=deferred。账单整理已导出「氚云导入模板」sheet，当前靠手工导入。",
+      "permission": "action",
+      "action": "chuanyun_sync",
+      "params": [],
+      "max_rows": 5
+    }
+  ]
+}

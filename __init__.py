@@ -1,0 +1,1 @@
+"""User-scaffolded extension."""

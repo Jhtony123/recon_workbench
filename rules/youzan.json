@@ -1,0 +1,109 @@
+{
+  "platform": "youzan",
+  "version": 1,
+  "rules": {
+    "biz_code": [
+      {
+        "key": "交易手续费",
+        "value": "运费险",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "余额支付",
+        "value": "余额支付",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "佣金-分销员",
+        "value": "佣金",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "充值",
+        "value": "充值",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "手机验证收费",
+        "value": "账扣",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "提现",
+        "value": "提现",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "提现手续费-快速到账",
+        "value": "提现手续费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "消费者保障服务费-放心购",
+        "value": "消费者保障服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "消费者保障服务费-退货包运费",
+        "value": "消费者保障服务费",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "订单入账",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "退款",
+        "value": "货款",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      }
+    ],
+    "read_option": [
+      {
+        "key": "dtype",
+        "value": "{\"支付流水号\": \"str\", \"关联单号\": \"str\", \"下单时间\": \"str\", \"入账时间\": \"str\", \"业务单号\": \"str\"}",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "encoding",
+        "value": "utf-8",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "index_col",
+        "value": "false",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      }
+    ]
+  },
+  "updated_at": "2026-11-16 15:53:25"
+}

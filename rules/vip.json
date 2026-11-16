@@ -1,0 +1,65 @@
+{
+  "platform": "vip",
+  "version": 1,
+  "rules": {
+    "biz_code": [
+      {
+        "key": "brand:C3",
+        "value": "C3",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "brand:COCOON",
+        "value": "CO",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "brand:MyAll",
+        "value": "MyAll",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "brand:MyAll(菁禾)",
+        "value": "MyAll(菁禾)",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "brand:Myall-唯品-唯品会（菁禾）",
+        "value": "MyAll(菁禾)",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "brand:YUUSAAY",
+        "value": "YUUSAAY",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "brand:唯品会_MyAll（菁禾）",
+        "value": "MyAll(菁禾)",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      },
+      {
+        "key": "brand:秋水伊人",
+        "value": "QS",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:25"
+      }
+    ]
+  },
+  "updated_at": "2026-11-16 15:53:25"
+}

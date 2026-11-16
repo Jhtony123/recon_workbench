@@ -1,0 +1,16 @@
+{
+  "platform": "douyin",
+  "version": 1,
+  "rules": {
+    "read_option": [
+      {
+        "key": "dtype",
+        "value": "{\"订单号\": \"str\", \"子订单号\": \"str\", \"售后编号\": \"str\", \"商品ID\": \"str\", \"备注\": \"str\"}",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      }
+    ]
+  },
+  "updated_at": "2026-11-16 15:53:24"
+}

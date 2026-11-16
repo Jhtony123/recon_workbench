@@ -1,0 +1,23 @@
+{
+  "platform": "akc",
+  "version": 1,
+  "rules": {
+    "biz_code": [
+      {
+        "key": "shop:S187707760",
+        "value": "爱库存_可可尼女装旗舰店|AKC004|CO",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      },
+      {
+        "key": "shop:S18770776023311001",
+        "value": "爱库存_秋水伊人CHIU·SHUI女装旗舰店|AKC003|QS",
+        "note": "builtin-default（代码内置剥离，可编辑；停用后回落代码兜底）",
+        "active": 1,
+        "updated_at": "2026-11-16 15:53:24"
+      }
+    ]
+  },
+  "updated_at": "2026-11-16 15:53:24"
+}

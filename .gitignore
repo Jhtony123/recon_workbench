@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# 运行时产物（结果/下载/解压缓存/日志/数据库在 data/extensions/recon_workbench/，不在本目录；
+# 此处防本地调试残留）
+results/
+downloads/
+extracted/
+logs/
+*.db
+*.db-journal
+*.parquet
+
+# 规则临时文件（原子写中间态）
+rules/.*.tmp
+
+# 编辑器/系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

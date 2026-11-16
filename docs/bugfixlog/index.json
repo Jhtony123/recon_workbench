@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "name": "recon_workbench Bug Fix Log",
+    "version": "1.0.0",
+    "updated": "2026-11-16",
+    "description": "已落地 bug 修复目录（按日期分子目录）；与 codemap task_lookup.bugfixlog 联动；参照 AI_RPA docs/bugfixlog 规范",
+    "layout": "YYYY-MM-DD/<kebab-short-name>.md"
+  },
+  "entries": [
+    {
+      "id": "2026-11-16-ks-nan-strip-and-refund-component",
+      "date": "2026-11-16",
+      "title": "快手 NaN 单号 strip 崩溃 + 货款退款组件名/类别混淆",
+      "area": ["platform_rules"],
+      "status": "fixed",
+      "file": "2026-11-16/ks-nan-strip-and-refund-component.md"
+    },
+    {
+      "id": "2026-11-16-hyk-stringdtype-backtick-zero-rows",
+      "date": "2026-11-16",
+      "title": "好衣库 StringDtype 剥反引号失效致 0 行（隐蔽假空）",
+      "area": ["platform_rules"],
+      "status": "fixed",
+      "file": "2026-11-16/hyk-stringdtype-backtick-zero-rows.md"
+    },
+    {
+      "id": "2026-11-16-vip-round-before-tax-division",
+      "date": "2026-11-16",
+      "title": "唯品会不含税金额舍入顺序漂移（先 round 再除税，H 表税率不 round）",
+      "area": ["platform_rules"],
+      "status": "fixed",
+      "file": "2026-11-16/vip-round-before-tax-division.md"
+    },
+    {
+      "id": "2026-11-16-youzan-trailing-fields-index-misalign",
+      "date": "2026-11-16",
+      "title": "有赞 csv 行尾多空字段致 pandas 索引推断整表错位（原始 zip 才暴露）",
+      "area": ["zip_input", "platform_rules"],
+      "status": "fixed",
+      "file": "2026-11-16/youzan-trailing-fields-index-misalign.md"
+    },
+    {
+      "id": "2026-11-16-zip-colon-winerror-and-pure-zip-guard",
+      "date": "2026-11-16",
+      "title": "zip 内层目录名冒号 WinError 123 + 纯 zip 目录判定防双份计账",
+      "area": ["zip_input"],
+      "status": "fixed",
+      "file": "2026-11-16/zip-colon-winerror-and-pure-zip-guard.md"
+    },
+    {
+      "id": "2026-11-16-drop-tail-non-pandas-read-key",
+      "date": "2026-11-16",
+      "title": "规则剥离后 drop_tail 混入 pandas 读取参数 TypeError",
+      "area": ["rules_store"],
+      "status": "fixed",
+      "file": "2026-11-16/drop-tail-non-pandas-read-key.md"
+    },
+    {
+      "id": "2026-11-14-regression-missing-columns-fake-green",
+      "date": "2026-11-14",
+      "title": "回归比对列漏项造成全绿假象（毛利率列恒 NULL 不报）",
+      "area": ["regression"],
+      "status": "fixed",
+      "file": "2026-11-14/regression-missing-columns-fake-green.md"
+    },
+    {
+      "id": "2026-11-14-readonly-sql-template-bypasses-actions",
+      "date": "2026-11-14",
+      "title": "read_only sql_template 工具不经 actions.py + UI 取数契约假空态",
+      "area": ["mcp_tool", "ui_page"],
+      "status": "fixed",
+      "file": "2026-11-14/readonly-sql-template-bypasses-actions.md"
+    }
+  ]
+}
