@@ -17,6 +17,9 @@ logs/
 # 规则临时文件（原子写中间态）
 rules/.*.tmp
 
+# SSH 残留（GIT_SSH_COMMAND 路径被吞时 ssh 会把 known_hosts 写成相对文件名）
+*ssh_known_hosts*
+
 # 编辑器/系统
 .vscode/
 .idea/
