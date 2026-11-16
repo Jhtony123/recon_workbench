@@ -212,13 +212,20 @@
   <section data-page="settings" class="page">
     <div class="hero">
       <h1>设置</h1>
-      <p class="lead">只读展示。在会话里对 AI 说「把对账结果存到 D:\财务对账结果」即可改存储路径；说「清空对账历史」即可清理（AI 会先向你确认）。</p>
+      <p class="lead">存储路径可在本页直接修改，也可以在会话里对 AI 说「把对账结果存到 D:\财务对账结果」；说「清空对账历史」即可清理（AI 会先向你确认）。</p>
     </div>
 
     <div class="panel">
       <div class="panel-head"><h2>结果存储路径</h2></div>
       <p class="hint" id="set-results-current">正在读取当前设置…</p>
-      <p class="hint">账单整理结果落到该目录下的批次子目录；页面下载副本走插件 downloads/，不受此设置影响。</p>
+      <label class="field-label" for="set-results-dir">自定义目录（绝对路径；留空并保存 = 恢复默认）</label>
+      <input id="set-results-dir" type="text" placeholder="例如 C:\Users\你的用户名\Desktop\账单（留空 = 默认目录）" spellcheck="false" />
+      <div class="actions">
+        <button class="btn acid" id="btn-save-settings">保存路径</button>
+        <button class="btn ghost" id="btn-reset-settings">恢复默认</button>
+      </div>
+      <p class="hint" id="set-save-result" style="display:none"></p>
+      <p class="hint">账单整理结果落到该目录下的批次子目录；保存前会校验目录可创建可写。页面下载副本走插件 downloads/，不受此设置影响。</p>
     </div>
 
     <div class="panel">

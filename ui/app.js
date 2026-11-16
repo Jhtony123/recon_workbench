@@ -674,6 +674,42 @@ async function loadSettingsPage() {
       ? `当前生效：${d.effective_dir}（自定义）`
       : `当前生效：${d.effective_dir}（默认）`;
   }
+  const out = $("set-save-result");
+  if (out) { out.style.display = "none"; out.textContent = ""; }
+}
+
+/** 保存存储路径（2026-11-16 bug 修复：AI 原生化改版误删了编辑入口，补回）。
+ *  restore=true 时传空串 = 恢复默认目录；后端校验绝对路径 + 可创建可写。 */
+async function saveResultsDir(restore) {
+  const btn = $(restore ? "btn-reset-settings" : "btn-save-settings");
+  const input = $("set-results-dir");
+  const out = $("set-save-result");
+  const dir = restore ? "" : String((input && input.value) || "").trim();
+  if (btn) btn.disabled = true;
+  try {
+    const res = await tool("recon_workbench__save_settings", { results_dir: dir });
+    const d = res.data || {};
+    toast(res.summary || "已保存", "ok");
+    if (input) input.value = d.results_dir || "";
+    const cur = $("set-results-current");
+    if (cur) {
+      cur.textContent = d.is_custom
+        ? `当前生效：${d.effective_dir}（自定义）`
+        : `当前生效：${d.effective_dir}（默认）`;
+    }
+    if (out) {
+      out.style.display = "";
+      out.textContent = res.summary || "已保存";
+    }
+  } catch (err) {
+    toast(err.message || "保存失败", "err");
+    if (out) {
+      out.style.display = "";
+      out.textContent = `保存失败：${err.message || err}`;
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 /** 清空历史：两步确认（WebView iframe 里 window.confirm 可能被拦，改用按钮态）。
@@ -773,6 +809,9 @@ function bindAll() {
   // 两步确认（clearHistoryFlow）后调 clear_history(confirm=yes)。
   const clearBtn = $("btn-clear-history");
   if (clearBtn) clearBtn.addEventListener("click", () => clearHistoryFlow(clearBtn));
+  // 设置页存储路径编辑（2026-11-16 bug 修复：改版误删入口后补回）
+  bind("btn-save-settings", () => saveResultsDir(false));
+  bind("btn-reset-settings", () => saveResultsDir(true));
   bind("btn-batch-refresh", () => loadBillBatches());
   bind("btn-shop-refresh", () => loadShops());
   bind("btn-rule-refresh", () => loadRules());
