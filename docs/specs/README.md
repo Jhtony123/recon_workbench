@@ -25,6 +25,7 @@
 
 | 日期 | spec | 状态 |
 |------|------|------|
+| 2026-11-17 | [SKU 对账启用（账单追账 · 不带成本第一步）](./2026-11-17-sku-match-revival.md) | confirmed（Q1–Q8 全部确认；开发未开始） |
 | 2026-11-16 | [全流程 workflow 与产物目录状态机（年月/账单整理/sku匹配）](./2026-11-16-sku-workflow-and-output-layout.md) | confirmed（目录改版+10月已实施；SKU/成本/回传/氚云口径确认、实现暂缓） |
 | 2026-11-16 | [内置规则剥离为默认可编辑规则](./2026-11-16-builtin-rules-extraction.md) | implemented |
 | 2026-11-16 | [总览页清空历史控件 + 细粒度清理工具](./2026-11-16-clear-history-ui-and-scoped-tool.md) | implemented |
