@@ -38,17 +38,26 @@ SHEET_REFUND = "退款匹配"
 SHEET_OMS = "已匹配的巨益单号"
 SHEET_CHUANYUN = "氚云导入模板"
 
-# 基准文件（影刀 cost_match 产出）的列序，导出时严格对齐，便于财务逐列对照
+# 基准文件（影刀 look_sku.result / B2B_match 产出）的列序，导出时严格对齐。
+# 2026-11-17 影刀10月基准实测：三张透视第2列都有「店铺编码」（shop_pivot_col /
+# product_pivot_col / unicolumns 均含）。11-14 曾把它当内部列裁掉——那是错的，
+# 内部列只有「…毛利率bp」与「数据来源」（店铺/款号透视）。
 SHOP_SHEET_COLUMNS = (
-    "店铺名称", "处理意见", "货款分摊金额", "订单结算金额", "数量", "发货成本",
-    "标准成本", "账单结算口径毛利", "账单结算口径毛利率", "订单结算口径毛利",
-    "订单结算口径毛利率", "冲发出商品数量", "冲发出商品",
+    "店铺名称", "店铺编码", "处理意见", "货款分摊金额", "订单结算金额", "数量",
+    "发货成本", "标准成本", "账单结算口径毛利", "账单结算口径毛利率",
+    "订单结算口径毛利", "订单结算口径毛利率", "冲发出商品数量", "冲发出商品",
 )
 PRODUCT_SHEET_COLUMNS = (
-    "店铺名称", "处理意见", "款号", "品牌", "年份", "季节", "吊牌价",
+    "店铺名称", "店铺编码", "处理意见", "款号", "品牌", "年份", "季节", "吊牌价",
     "货款分摊金额", "订单结算金额", "数量", "发货成本", "标准成本",
     "账单结算口径毛利", "账单结算口径毛利率", "订单结算口径毛利",
     "订单结算口径毛利率", "冲发出商品数量", "冲发出商品",
+)
+# 匹配透视基准列序（look_sku unicolumns，L1562/L2042）：店铺编码在第2列，
+# 品类/年份在款号维度里，数据来源在末列。
+MATCH_SHEET_COLUMNS = (
+    "店铺名称", "店铺编码", "款号", "处理意见", "品类", "年份", "季节", "品牌",
+    "吊牌价", "数量", "货款分摊金额", "结算金额", "标准成本", "发货成本", "数据来源",
 )
 
 
@@ -73,9 +82,24 @@ def _fen_to_yuan(df: pd.DataFrame, cols) -> pd.DataFrame:
     if df is None or df.empty:
         return df if df is not None else pd.DataFrame()
     out = df.copy()
+
+    def _conv(v):
+        # NaN/None 保持空白（基准里未匹配行吊牌价/采购单价、补录行货款金额是空白，
+        # 不是 0）。from_fen(None) 会归 0，必须先拦。2026-11-17 影刀10月基准实测。
+        if v is None:
+            return None
+        try:
+            if pd.isna(v):
+                return None
+        except (TypeError, ValueError):
+            pass
+        if isinstance(v, str) and v.strip().lower() in ("", "nan", "none", "nat"):
+            return None
+        return float(from_fen(v))
+
     for c in cols:
         if c in out.columns:
-            out[c] = out[c].map(lambda v: float(from_fen(v)))
+            out[c] = out[c].map(_conv)
     return out
 
 
@@ -111,7 +135,10 @@ def export_match_result(
         # 「数据来源」不得漏进 Excel，否则财务逐列对照时列数与列序都对不上。
         _write(writer, pivot_shop, SHEET_SHOP, PIVOT_MONEY_COLUMNS, columns=SHOP_SHEET_COLUMNS)
         _write(writer, pivot_product, SHEET_PRODUCT, PIVOT_MONEY_COLUMNS, columns=PRODUCT_SHEET_COLUMNS)
-        _write(writer, pivot_match, SHEET_MATCH, PIVOT_MONEY_COLUMNS)
+        # 2026-11-17 影刀10月基准实测：匹配透视「结算金额」整列放大100倍。
+        # 根因：这里误传 PIVOT_MONEY_COLUMNS（含「订单结算金额」、不含「结算金额」），
+        # 定义好的 MATCH_PIVOT_MONEY_COLUMNS 从未接线——与 11-14 列序常量同类缺陷。
+        _write(writer, pivot_match, SHEET_MATCH, MATCH_PIVOT_MONEY_COLUMNS, columns=MATCH_SHEET_COLUMNS)
         _write(writer, receipt, SHEET_RECEIPT, DETAIL_MONEY_COLUMNS)
         _write(writer, refund, SHEET_REFUND, DETAIL_MONEY_COLUMNS)
         _write(writer, oms_matched, SHEET_OMS, ())
@@ -177,7 +204,10 @@ def _write(writer, df: pd.DataFrame, sheet: str, money_cols, columns=None) -> No
     会原样漏进 Excel，财务看到的列比基准多出两列且夹在中间。
     """
     if df is None or df.empty:
-        pd.DataFrame({sheet: []}).to_excel(writer, sheet_name=sheet[:31], index=False)
+        # 空表也保留真实列头（基准「已匹配的巨益单号」空表是 id/账单周期/数量 三列，
+        # 不是单列占位）。2026-11-17 影刀10月基准实测。
+        cols = list(columns) if columns else (list(df.columns) if df is not None and len(df.columns) else [sheet])
+        pd.DataFrame(columns=cols).to_excel(writer, sheet_name=sheet[:31], index=False)
         return
     out = _fen_to_yuan(df, money_cols) if money_cols else df.copy()
     if columns:

@@ -268,7 +268,9 @@ def match_receipt(
         merged["店铺编码"] = shop_code
     elif "店铺编码" not in merged.columns:
         merged["店铺编码"] = ""
-    merged["是否秒退判断"] = "否"
+    # 原脚本 L664/L794：初始空串；已匹配行强制空串，未匹配行由 mark_instant_refund
+    # 判「是」或留空。不写「否」——基准里该列只有 空/是 两种取值（2026-11-17 实测）。
+    merged["是否秒退判断"] = ""
     merged["处理意见"] = ADVICE_CARRY
     # 历史对账记录 / 对账周期 来自 OMS join，是 finalize_advice 的**判定输入**，
     # 绝不能覆盖成空串（2026-08 DY023 实测缺陷）：
@@ -363,7 +365,8 @@ def match_refund(
         merged["店铺编码"] = shop_code
     elif "店铺编码" not in merged.columns:
         merged["店铺编码"] = ""
-    merged["是否秒退判断"] = "否"
+    # 原脚本 L700：退款侧初始空串，秒退交叉核对（L885-887）才填「是」。不写「否」。
+    merged["是否秒退判断"] = ""
     # 同 match_receipt：历史对账记录 / 对账周期 必须保留 OMS join 带进来的真值
     _preserve_oms_columns(merged)
     merged["货款分摊金额"] = merged["货款金额"]
@@ -409,7 +412,9 @@ def mark_instant_refund(receipt: pd.DataFrame, refund: pd.DataFrame) -> pd.DataF
     if out.empty:
         return out
     if "是否秒退判断" not in out.columns:
-        out["是否秒退判断"] = "否"
+        out["是否秒退判断"] = ""
+    # 原脚本 L794：已匹配行强制空串（只有未匹配行才可能判「是」）
+    out.loc[out["巨益单据匹配状态"] == MATCHED, "是否秒退判断"] = ""
     if refund is None or refund.empty:
         return out
 
@@ -428,6 +433,38 @@ def mark_instant_refund(receipt: pd.DataFrame, refund: pd.DataFrame) -> pd.DataF
             out.at[i, "是否秒退判断"] = "是"
             out.at[i, "处理意见"] = ADVICE_NO_ACTION
     return out
+
+
+def mark_refund_instant(receipt: pd.DataFrame, refund: pd.DataFrame) -> pd.DataFrame:
+    """退款侧秒退交叉标记（原 look_sku.result L860-887）。
+
+    收款侧已判「是」的秒退行，按两条路径传导到退款侧：
+      1. 收款秒退且单据类型=退款单（重匹配命中 OMS 退款单）→ 取其「单号」集合，
+         退款侧同单号行标「是」；
+      2. 收款秒退且单据类型为空（重匹配未命中）→ 取其「订单编号」集合（剔空），
+         退款侧同订单编号行标「是」。
+    其余退款行保持空串。2026-11-17 影刀10月基准实测：HYK 退款 47 行因此标「是」，
+    旧实现漏掉这段 → 退款侧秒退全空。
+    """
+    if refund is None or refund.empty:
+        return refund
+    ref = refund.copy()
+    ref["是否秒退判断"] = ""
+    if receipt is None or receipt.empty or "是否秒退判断" not in receipt.columns:
+        return ref
+    inst = receipt[receipt["是否秒退判断"].astype("string").fillna("") == "是"]
+    if inst.empty:
+        return ref
+    doc = inst.get("单据类型", pd.Series(index=inst.index, dtype="object"))
+    by_doc = inst[doc.astype("string").fillna("") == DOC_REFUND]
+    set1 = {s for s in by_doc.get("单号", pd.Series(dtype="object")).astype("string").fillna("").tolist() if s}
+    by_order = inst[doc.isna() | (doc.astype("string").fillna("") == "")]
+    set2 = {s for s in by_order.get("订单编号", pd.Series(dtype="object")).astype("string").fillna("").tolist() if s}
+    if set1 and "单号" in ref.columns:
+        ref.loc[ref["单号"].astype("string").fillna("").isin(set1), "是否秒退判断"] = "是"
+    if set2 and "订单编号" in ref.columns:
+        ref.loc[ref["订单编号"].astype("string").fillna("").isin(set2), "是否秒退判断"] = "是"
+    return ref
 
 
 def rematch_instant_refund(
@@ -544,7 +581,7 @@ def apply_advice(receipt: pd.DataFrame, refund: pd.DataFrame) -> tuple[pd.DataFr
     return rec, ref
 
 
-def build_oms_writeback(receipt: pd.DataFrame, refund: pd.DataFrame) -> pd.DataFrame:
+def build_oms_writeback(receipt: pd.DataFrame, refund: pd.DataFrame, *, period: str = "") -> pd.DataFrame:
     """「已匹配的巨益单号」表（回传数据库用）。
 
     原脚本（look_sku.py 1546）：
@@ -583,7 +620,12 @@ def build_oms_writeback(receipt: pd.DataFrame, refund: pd.DataFrame) -> pd.DataF
             out[c] = ""
     out["id"] = out["id"].astype("string").fillna("")
     out["数量"] = pd.to_numeric(out["数量"], errors="coerce").fillna(0).astype("int64")
-    return out.drop_duplicates(subset=["id"])
+    out = out.drop_duplicates(subset=["id"])
+    # 原脚本 L1553：id 透视后**统一赋 bill_time**（不从明细带列——补录行账单周期为空，
+    # 带列会让回传表账单周期空白）。2026-11-17 影刀10月基准实测：HYK 303 行全有账期。
+    if period:
+        out["账单周期"] = period
+    return out
 
 
 def _blank_oms_rows(
@@ -938,6 +980,8 @@ def match_all(
         receipt, oms.get("退款"),
         period=period, shop_name=shop_name, shop_code=shop_code,
     )
+    # 退款侧秒退交叉标记（原 L860-887）：必须在 rematch 之后（靠重匹配后的单据类型/单号）
+    refund = mark_refund_instant(receipt, refund)
 
     # OMS 剩余单据补录：必须在分摊之前，补录行货款金额为 None 不参与分摊合计
     receipt, refund, supp_stats = supplement_oms_remainder(
@@ -947,7 +991,7 @@ def match_all(
     if finalize:
         receipt, refund = finalize_advice(receipt, refund, period=period)
 
-    oms_matched = build_oms_writeback(receipt, refund)
+    oms_matched = build_oms_writeback(receipt, refund, period=period)
     stats = recount(receipt, refund, oms_matched)
     stats.update(supp_stats)
 

@@ -474,8 +474,9 @@ def run_match(
 
     # 6) 透视
     progress(84, "生成店铺/款号透视")
-    p_shop = pivots.pivot_shop(detail, include_tax=include_tax)
-    p_product = pivots.pivot_product(detail, include_tax=include_tax)
+    # dormant 是成本匹配阶段管线：显式 stage="cost"（pivot 默认已改 match 口径）
+    p_shop = pivots.pivot_shop(detail, include_tax=include_tax, stage="cost")
+    p_product = pivots.pivot_product(detail, include_tax=include_tax, stage="cost")
     p_match = pivots.pivot_match(detail)
     oms_matched = matching.build_oms_writeback(rec, ref)
     chuanyun = pivots.chuanyun_template(detail, period=period)

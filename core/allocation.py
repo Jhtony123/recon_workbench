@@ -297,11 +297,14 @@ def allocate(df: pd.DataFrame, *, group_col: str = "订单编号") -> Allocation
     if "货款分摊金额" not in res.columns:
         res["货款分摊金额"] = 0
 
-    # 分摊完成后再把组内重复订单号的货款金额置 0（原脚本 final_df 的 transform mask）。
+    # 分摊完成后再把组内重复订单号的货款金额 mask 掉（原脚本 final_df 的 transform mask）。
     # 一步 join 结果里同一订单被拆成多行，货款只能计一次。
+    # 2026-11-17 影刀10月基准实测：重复行导出为**空白**（NaN）而非 0——原脚本
+    # 货款金额列含 NaN（补录行）时整列 float，mask 值 0 经 Excel 往返读回为 NaN；
+    # sum_fen 对 NaN 归 0，对平门不受影响。
     res["货款金额"] = (
         res.groupby(group_keys, sort=False)["货款金额"]
-        .transform(lambda s: s.mask(s.duplicated(), 0))
+        .transform(lambda s: s.mask(s.duplicated(), None))
     )
 
     res["货款分摊金额"] = res["货款分摊金额"].astype("int64")

@@ -2,11 +2,19 @@
   "meta": {
     "name": "recon_workbench Bug Fix Log",
     "version": "1.0.0",
-    "updated": "2026-11-16",
+    "updated": "2026-11-17",
     "description": "已落地 bug 修复目录（按日期分子目录）；与 codemap task_lookup.bugfixlog 联动；参照 AI_RPA docs/bugfixlog 规范",
     "layout": "YYYY-MM-DD/<kebab-short-name>.md"
   },
   "entries": [
+    {
+      "id": "2026-11-17-sku-match-baseline-alignment",
+      "date": "2026-11-17",
+      "title": "SKU对账产物与影刀10月基准全面对齐（单位bug/透视阶段口径/B2B发货成本/占位与空值语义/多店编码/回传表周期，三轮精修）",
+      "area": ["export_format", "pivots", "cost", "matching", "b2b"],
+      "status": "fixed",
+      "file": "2026-11-17/sku-match-baseline-alignment.md"
+    },
     {
       "id": "2026-11-16-vip-nan-kh-len-typeerror",
       "date": "2026-11-16",

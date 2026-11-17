@@ -54,6 +54,54 @@ DRAFTS_DIRNAME = "底稿"
 BILL_DIRNAME = "账单整理"
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
+#: SKU 对账状态机目录族（2026-11-17 sku-match-revival spec Q5）：
+#: {results}/{YYYY-MM}/sku匹配/{未匹配成本|已匹配成本|已回传数据库}/{批次名}/
+#: 本期只写 未匹配成本/；成本匹配/回传启用后按「成功 move、失败留守」迁移。
+SKU_DIRNAME = "sku匹配"
+SKU_STATE_PENDING_COST = "未匹配成本"
+SKU_STATE_COSTED = "已匹配成本"
+SKU_STATE_WRITTEN_BACK = "已回传数据库"
+SKU_STATES: tuple[str, ...] = (SKU_STATE_PENDING_COST, SKU_STATE_COSTED, SKU_STATE_WRITTEN_BACK)
+
+#: SKU 对账底稿表格主名（明细/透视/回传表，金额=分）
+MATCH_DETAIL_STEM = "match_detail"
+MATCH_PIVOT_SHOP_STEM = "pivot_shop"
+MATCH_PIVOT_PRODUCT_STEM = "pivot_product"
+MATCH_PIVOT_MATCH_STEM = "pivot_match"
+MATCH_WRITEBACK_STEM = "oms_matched"
+
+
+def sku_root(period: str, state: str = SKU_STATE_PENDING_COST) -> Path:
+    """SKU 对账某状态的批次根：{results}/{YYYY-MM}/sku匹配/{状态}/（自动创建）。"""
+    if state not in SKU_STATES:
+        raise ValueError(f"未知 SKU 状态目录：{state}（可选：{'/'.join(SKU_STATES)}）")
+    d = output_dir() / period_month(period) / SKU_DIRNAME / state
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def build_match_batch_dir(period: str, platform: str, shop_code: str,
+                          shop_name: str = "", display_name: str = "",
+                          state: str = SKU_STATE_PENDING_COST) -> Path:
+    """SKU 对账批次目录：命名与账单整理同构（YYYY-MM-平台-店铺-编号；akc/vip 特例）。
+
+    重跑覆盖（rmtree 旧目录）；唯品会按旬出多份文件，目录不清（旬文件名不同，累积）。
+    """
+    import shutil
+
+    display = _safe(display_name or platform)
+    if platform == "akc":
+        name = f"{_safe(period)}-{display}"
+    elif platform == "vip":
+        name = f"{_safe(period)}-{display}-唯品中国"
+    else:
+        name = f"{_safe(period)}-{display}-{_safe(shop_name or shop_code)}-{_safe(shop_code)}"
+    d = sku_root(period, state) / name
+    if d.is_dir() and platform != "vip":
+        shutil.rmtree(d, ignore_errors=True)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
 
 def period_month(period: str) -> str:
     """账期 → 年月目录名（YYYY-MM）。解析不出时回落原值/未知账期，绝不落根目录。"""
@@ -606,27 +654,37 @@ def resolve_batch(
         root = output_dir()
         if root.is_dir():
             for d in iter_batch_dirs(root):
-                man = read_manifest(manifest_path_for(d))
-                if target in (str(man.get("batch_id") or ""), d.name):
-                    meta = parse_dir_name(d.name)
-                    return BillBatch(
-                        batch_id=str(man.get("batch_id") or d.name),
-                        dir=d,
-                        platform=str(man.get("platform") or meta.get("platform") or ""),
-                        shop_code=str(man.get("shop_code") or meta.get("shop_code") or ""),
-                        shop_name=str(man.get("shop_name") or ""),
-                        period=str(man.get("period") or meta.get("period") or ""),
-                        s_date=str(man.get("s_date") or ""),
-                        e_date=str(man.get("e_date") or ""),
-                        status=str(man.get("status") or ""),
-                        created_at=str(man.get("created_at") or ""),
-                        detail_rows=int(man.get("detail_rows") or 0),
-                        goods_rows=int(man.get("goods_rows") or 0),
-                        totals=dict(man.get("totals") or {}),
-                        files=dict(man.get("files") or {}),
-                        notes=[str(n) for n in (man.get("notes") or [])],
-                        drafts_subdir=str(man.get("drafts_subdir") or ""),
-                    )
+                # 唯品会多旬共用一个批次目录，每旬底稿子目录各有 manifest；
+                # manifest_path_for 只取最新一份，按 batch_id 定位单旬时必须逐份扫。
+                candidates = [manifest_path_for(d)]
+                candidates += sorted((d / DRAFTS_DIRNAME).glob(f"*/{MANIFEST_NAME}"))
+                seen: set[str] = set()
+                for mp in candidates:
+                    key = str(mp)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    man = read_manifest(mp)
+                    if target in (str(man.get("batch_id") or ""), d.name):
+                        meta = parse_dir_name(d.name)
+                        return BillBatch(
+                            batch_id=str(man.get("batch_id") or d.name),
+                            dir=d,
+                            platform=str(man.get("platform") or meta.get("platform") or ""),
+                            shop_code=str(man.get("shop_code") or meta.get("shop_code") or ""),
+                            shop_name=str(man.get("shop_name") or ""),
+                            period=str(man.get("period") or meta.get("period") or ""),
+                            s_date=str(man.get("s_date") or ""),
+                            e_date=str(man.get("e_date") or ""),
+                            status=str(man.get("status") or ""),
+                            created_at=str(man.get("created_at") or ""),
+                            detail_rows=int(man.get("detail_rows") or 0),
+                            goods_rows=int(man.get("goods_rows") or 0),
+                            totals=dict(man.get("totals") or {}),
+                            files=dict(man.get("files") or {}),
+                            notes=[str(n) for n in (man.get("notes") or [])],
+                            drafts_subdir=str(man.get("drafts_subdir") or ""),
+                        )
         return None
 
     batches = list_batches(period=period, platform=platform, shop_code=shop_code, limit=1)

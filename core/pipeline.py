@@ -34,21 +34,20 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from . import artifacts, exporters, joblog, pivots, repo, rules_store
-from .config import BIZ_GOODS, period_label
-from .errors import ReconError
+from . import allocation, artifacts, b2b, cost, db, exporters, joblog, matching, pivots, repo, rules_store
+from .config import BIZ_GOODS, DEFAULT_LOOKBACK_MONTHS, SRC_RECEIPT, SRC_REFUND, period_label
+from .errors import DataSourceEmpty, ReconError
 from .money import fen_to_float, from_fen, sum_fen
 from .platforms import ParseContext, get_adapter
 from .platforms.registry import parse_platform
 
 ProgressFn = Callable[[int, str], None]
 
-#: 真正可运行的阶段
-ACTIVE_STAGES = ("bill",)
+#: 真正可运行的阶段（2026-11-17 sku-match-revival spec：match 启用，不带成本表）
+ACTIVE_STAGES = ("bill", "match")
 
 #: 占位暂缓的阶段（含 UI 导航里的四个能力）
 DEFERRED_STAGES = {
-    "match": "SKU 对账",
     "cost": "成本匹配",
     "writeback": "数据库回传",
     "chuanyun": "氚云对接",
@@ -704,9 +703,361 @@ def _bill_chuanyun(bill_df: pd.DataFrame, ctx: ParseContext) -> pd.DataFrame:
 # ------------------------------------------------------------------ 占位阶段
 
 
-def run_match(*_args: Any, **_kwargs: Any) -> StageResult:
-    """SKU 对账 —— 占位暂缓。实现在 core/pipeline_dormant.run_match。"""
-    return deferred_result("match")
+def _match_to_int(value: Any, default: int = 0) -> int:
+    """安全转 int（None/NaN → default）；不能用 int(v or 0)，NaN 是 truthy。"""
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+def _match_period_cn(plat: str, period: str, s_date: str, e_date: str) -> str:
+    """业务账期中文标签。唯品会带日（按旬结算，check_dates L47 特例）。"""
+    if plat == "vip" and len(s_date) >= 10 and len(e_date) >= 10:
+        return (f"{s_date[:4]}年{s_date[5:7]}{s_date[8:10]}-"
+                f"{e_date[:4]}年{e_date[5:7]}{e_date[8:10]}")
+    return period_label(period, s_date=s_date, e_date=e_date) or period
+
+
+def _vip_label_from_name(name: str) -> str:
+    """唯品会交付文件名 → 带日账期标签（唯品会_{label}唯品中国_账单整理.xlsx）。"""
+    s = str(name or "")
+    if s.startswith("唯品会_") and "唯品中国" in s:
+        return s[len("唯品会_"):s.index("唯品中国")]
+    return ""
+
+
+def _export_match_book(out_dir: Path, *, file_name: str, res: dict[str, Any],
+                       detail: pd.DataFrame, batch_id: str, period: str,
+                       plat: str, shop_code: str, drafts_subdir: str = "") -> dict[str, Any]:
+    """落一份 SKU 对账产物：6-sheet Excel（批次根）+ parquet/csv 底稿 + manifest。"""
+    import json as _json
+    import shutil
+
+    drafts = out_dir / (drafts_subdir or artifacts.DRAFTS_DIRNAME)
+    exported_files: list[str] = []
+    download_files: list[dict] = []
+    path = exporters.export_match_result(
+        out_dir, file_name=file_name,
+        pivot_shop=res["pivot_shop"], pivot_product=res["pivot_product"],
+        pivot_match=res["pivot_match"], receipt=res["receipt"], refund=res["refund"],
+        oms_matched=res["oms_matched"],
+    )
+    exported_files.append(str(path))
+
+    # 底稿：明细与三张透视、回传表（金额=分），供回归与排查
+    draft_files: list[str] = []
+    for stem, df in (
+        (artifacts.MATCH_DETAIL_STEM, detail),
+        (artifacts.MATCH_PIVOT_SHOP_STEM, res["pivot_shop"]),
+        (artifacts.MATCH_PIVOT_PRODUCT_STEM, res["pivot_product"]),
+        (artifacts.MATCH_PIVOT_MATCH_STEM, res["pivot_match"]),
+        (artifacts.MATCH_WRITEBACK_STEM, res["oms_matched"]),
+    ):
+        p, _n = artifacts.write_table(drafts, stem, df, list(df.columns))
+        draft_files.append(str(p))
+
+    # 下载副本（宿主 downloads 路由）
+    from .config import runtime_dir
+    dl_dir = runtime_dir() / "downloads"
+    dl_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    for p in exported_files:
+        src = Path(p)
+        dl_name = f"{stamp}_{src.name}"
+        try:
+            shutil.copy2(src, dl_dir / dl_name)
+            download_files.append({
+                "name": src.name,
+                "url": f"/agent/extensions/recon_workbench/files/downloads/{dl_name}",
+            })
+        except OSError:
+            pass
+
+    batch = artifacts.BillBatch(
+        batch_id=batch_id, dir=out_dir, platform=plat, shop_code=shop_code,
+        period=period, created_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+        drafts_subdir=drafts_subdir, status="success",
+    )
+    batch.totals = {k: v for k, v in res["stats"].items() if isinstance(v, (int, float, bool))}
+    batch.files = {
+        "excel": exported_files[0],
+        "excel_list": _json.dumps(exported_files, ensure_ascii=False),
+        "draft_files": _json.dumps(draft_files, ensure_ascii=False),
+        "downloads": _json.dumps(download_files, ensure_ascii=False),
+    }
+    batch.notes.append("SKU对账产物（不带成本表阶段）；金额底稿为分，Excel 为元。")
+    artifacts.write_manifest(batch)
+    return {"exported": exported_files[0], "exported_files": exported_files,
+            "downloads": download_files, "batch_dir": str(out_dir)}
+
+
+def run_match(
+    *,
+    platform: str,
+    shop_code: str = "",
+    shop_name: str = "",
+    period: str = "",
+    s_date: str = "",
+    e_date: str = "",
+    bill_batch_id: str = "",
+    lookback_months: int | None = None,
+    export: bool = True,
+    progress: ProgressFn = _noop_progress,
+) -> StageResult:
+    """阶段 2：SKU 对账（不带成本表）。2026-11-17 sku-match-revival spec 启用。
+
+    输入 = 账单整理批次（bill_goods / B2B 明细 sheet）；OMS 只读取数（向前 6 个月）；
+    结果落 {period}/sku匹配/未匹配成本/{批次名}/，不写任何库表、不写生产库。
+    顺序纪律（dormant 实测教训）：match_all(finalize=False) → 分摊对平门 →
+    finalize_detail 终判 → 产品回填 → 标准成本 → 透视 → recount。
+    """
+    t0 = time.time()
+    plat = parse_platform(platform)
+    batch_id = repo.new_batch_id("match")
+    progress(5, f"SKU对账 {plat} / {shop_code or '(按批次)'} / {period}")
+
+    src = artifacts.resolve_batch(batch_id=bill_batch_id, period=period,
+                                  platform=plat, shop_code=shop_code)
+    if src is None:
+        raise DataSourceEmpty(
+            "没有可用的账单整理批次，请先执行「账单整理」",
+            detail={"platform": plat, "shop_code": shop_code, "period": period,
+                    "bill_batch_id": bill_batch_id},
+        )
+    period = period or src.period
+    shop_code = shop_code or src.shop_code
+    shop_name = shop_name or src.shop_name or shop_code
+    s_date = s_date or src.s_date
+    e_date = e_date or src.e_date
+
+    rules = rules_store.load_rules_map(plat)
+    adapter = get_adapter(plat, rules)
+    display = adapter.display_name or plat
+    safe = lambda v: "".join(ch for ch in str(v or "") if ch not in '\\/:*?"<>|')
+    out_dir = artifacts.build_match_batch_dir(period, plat, shop_code,
+                                              shop_name=shop_name, display_name=display)
+
+    # ---------------- B2B 分流（爱库存/唯品会：不查 OMS，逐行直接给意见）
+    if getattr(adapter, "is_b2b", False):
+        progress(20, "B2B 渠道：读账单明细（不查 OMS）")
+        frames = b2b.load_b2b_inputs(src.dir, plat)
+        # 单旬冒烟/回归：显式 bill_batch_id 时收敛到该旬。唯品会一个批次目录累积
+        # 三旬文件（默认全跑），每旬底稿子目录各有 manifest（batch_id + files.excel）；
+        # 按 batch_id 找到对应旬的交付文件名，只跑那一份。
+        if bill_batch_id and len(frames) > 1:
+            want = ""
+            for mp in sorted((src.dir / artifacts.DRAFTS_DIRNAME).glob(f"*/{artifacts.MANIFEST_NAME}")):
+                man = artifacts.read_manifest(mp)
+                if str(man.get("batch_id") or "") == bill_batch_id:
+                    want = str((man.get("files") or {}).get("excel") or "")
+                    break
+            if want:
+                picked = [(p, d) for p, d in frames if p.name == Path(want).name]
+                if picked:
+                    frames = picked
+        all_stats: dict[str, int] = {}
+        exported_files: list[str] = []
+        downloads: list[dict] = []
+        n_xun = 0
+        for xls_path, df in frames:
+            n_xun += 1
+            if plat == "vip":
+                label = _vip_label_from_name(xls_path.name) or _match_period_cn(plat, period, s_date, e_date)
+                sub = f"{artifacts.DRAFTS_DIRNAME}/{label}" if label else ""
+                fname = f"唯品会_{safe(label)}唯品中国_账单匹配结果.xlsx"
+            else:
+                label = _match_period_cn(plat, period, s_date, e_date)
+                sub = ""
+                fname = f"爱库存_{safe(label)}_账单匹配结果.xlsx"
+            progress(40, f"B2B 匹配 {xls_path.name}")
+            res = b2b.match_b2b_frame(df, platform=plat, period_cn=label)
+            if export:
+                info = _export_match_book(
+                    out_dir, file_name=fname, res=res, detail=res["detail"],
+                    batch_id=f"{batch_id}-{n_xun}" if len(frames) > 1 else batch_id,
+                    period=period, plat=plat, shop_code=shop_code, drafts_subdir=sub)
+                exported_files.extend(info["exported_files"])
+                downloads.extend(info["downloads"])
+            for k, v in res["stats"].items():
+                if isinstance(v, int):
+                    all_stats[k] = all_stats.get(k, 0) + v
+        duration = time.time() - t0
+        joblog.save_job_log(
+            batch_id, stage="match", status="success", platform=plat,
+            shop_code=shop_code, period=period,
+            bill_rows=all_stats.get("receipt_rows", 0) + all_stats.get("refund_rows", 0),
+            message=f"B2B 对账完成（{n_xun} 份）：收款 {all_stats.get('receipt_rows', 0)} 行 / "
+                    f"退款 {all_stats.get('refund_rows', 0)} 行；不回传数据库",
+            duration_sec=duration,
+        )
+        progress(100, "B2B 对账完成")
+        return StageResult(
+            stage="match", status="success", batch_id=batch_id,
+            message=f"B2B 对账完成（{n_xun} 份）：收款 {all_stats.get('receipt_rows', 0)} 行 / "
+                    f"退款 {all_stats.get('refund_rows', 0)} 行",
+            data={**all_stats, "exported": exported_files[0] if exported_files else "",
+                  "exported_files": exported_files, "downloads": downloads,
+                  "batch_dir": str(out_dir), "stored_in_db": False,
+                  "duration_sec": round(duration, 2)},
+        )
+
+    # ---------------- B2C 主链
+    goods = artifacts.read_goods(src)
+    if goods.empty:
+        raise DataSourceEmpty(
+            "账单整理批次里没有货款行（bill_goods 为空）",
+            detail={"batch_id": src.batch_id, "goods_path": str(src.goods_path)},
+        )
+    bill_df = pd.DataFrame({
+        "订单编号": goods["order_no"].astype("string").fillna(""),
+        "资金日期": goods["fund_date"].astype("string").fillna(""),
+        "业务类别": BIZ_GOODS,
+        "收款": pd.to_numeric(goods["receipt_fen"], errors="coerce").fillna(0).astype("int64"),
+        "退款": pd.to_numeric(goods["refund_fen"], errors="coerce").fillna(0).astype("int64"),
+    })
+    # 匹配窗口：京东用钱包备注资金日期 min~max ≠ 用户账期（JD001 实测教训）
+    win_s, win_e = artifacts.match_window(batch_id=src.batch_id)
+    match_s, match_e = win_s or s_date, win_e or e_date
+    period_cn = _match_period_cn(plat, period, s_date, e_date)
+    bill_split = matching.split_bill(bill_df, period=period_cn)
+    progress(20, f"账单货款：收款 {len(bill_split.get('收款', []))} 单 / "
+                 f"退款 {len(bill_split.get('退款', []))} 单")
+
+    progress(30, "查询巨益出入库单（只读）")
+    lb = int(lookback_months) if lookback_months else DEFAULT_LOOKBACK_MONTHS
+    oms = db.fetch_oms_rows(shop_code, s_date, e_date, lookback_months=lb)
+    total_oms = sum(len(v) for v in oms.values())
+    if total_oms == 0:
+        joblog.save_job_log(
+            batch_id, stage="match", status="skipped", platform=plat,
+            shop_code=shop_code, period=period,
+            message="账期内数据库无出入库单（新店首月或本期无发货属正常情况）",
+            duration_sec=time.time() - t0,
+        )
+        return StageResult(
+            stage="match", status="skipped", batch_id=batch_id,
+            message="账期内数据库无出入库单，跳过匹配",
+            data={"oms_rows": 0, "bill_rows": int(len(bill_df))},
+        )
+
+    progress(50, "收款/退款与出入库单匹配")
+    matched = matching.match_all(bill_split, oms, period=period_cn,
+                                 s_date=match_s, e_date=match_e,
+                                 shop_name=shop_name, shop_code=shop_code,
+                                 finalize=False)
+    detail = matched.detail
+    diff_fen = 0
+    if not detail.empty:
+        progress(62, "货款分摊与合计校验")
+        alloc_in = detail.copy()
+        # 补录行货款金额为 None（无账单金额），不能 fillna(0)——分摊靠 isna 区分。
+        # 空串同样归 None：秒退重匹配未命中 OMS 退款单的行货款被 _blank_join 置 ""，
+        # 基准里这批行货款金额是空白（2026-11-17 HYK 实测 11 行）。
+        alloc_in["货款金额"] = alloc_in["货款金额"].map(
+            lambda v: None if v is None or (isinstance(v, float) and v != v)
+            or (isinstance(v, str) and not v.strip()) else _match_to_int(v))
+        alloc_in["结算金额"] = pd.to_numeric(alloc_in.get("结算金额", 0),
+                                             errors="coerce").fillna(0).astype("int64")
+        alloc_res = allocation.allocate(alloc_in)
+        alloc_res.verify_or_raise(f"{plat}/{shop_code}/{period}")
+        detail = alloc_res.frame
+        diff_fen = alloc_res.diff_fen
+        # 终判必须在分摊之后（cond2/cond3/fallback 都读分摊金额）
+        detail = matching.finalize_detail(detail, period=period_cn)
+
+    progress(72, "匹配商品信息与标准成本")
+    product_df = pd.DataFrame()
+    order_date_map: dict[str, str] = {}
+    if not detail.empty:
+        skus = [s for s in detail["sku"].astype("string").fillna("").unique().tolist() if s]
+        if skus:
+            try:
+                product_df = db.fetch_product_info(skus)
+            except ReconError:
+                product_df = pd.DataFrame()
+        orders = [o for o in detail["订单编号"].astype("string").fillna("").unique().tolist()
+                  if o and o != "无订单号"]
+        if orders:
+            try:
+                order_date_map = db.fetch_order_dates(orders)
+            except ReconError:
+                order_date_map = {}
+        detail = cost.enrich_from_db(detail, product_df, order_date_map, is_b2b=False)
+        # 不带成本表阶段：cost_map 空 → 采购单价/发货成本 0；标准成本=数量×DB单价
+        cost_res = cost.apply_cost(detail, {}, mode=cost.MODE_STYLE)
+        detail = cost_res.frame
+    else:
+        cost_res = cost.CostResult(frame=detail)
+
+    progress(84, "生成店铺/款号透视")
+    # B2C：原脚本透视层 fillna("未知") 就地改写明细（无 .copy()），故 mutate_detail=True，
+    # 明细 sheet 的品类/品牌也显示「未知」；透视先算，再切收/退款侧导出。
+    p_shop = pivots.pivot_shop(detail, mutate_detail=True)
+    p_product = pivots.pivot_product(detail, mutate_detail=True)
+    p_match = pivots.pivot_match(detail)
+    src_col = detail.get("数据来源", pd.Series(index=detail.index, dtype="object")).astype("string")
+    rec = detail[src_col == SRC_RECEIPT].copy() if not detail.empty else detail
+    ref = detail[src_col == SRC_REFUND].copy() if not detail.empty else detail
+    res = {
+        "receipt": rec, "refund": ref,
+        "pivot_shop": p_shop,
+        "pivot_product": p_product,
+        "pivot_match": p_match,
+        "oms_matched": matching.build_oms_writeback(rec, ref, period=period_cn),
+    }
+    stats = matching.recount(rec, ref, res["oms_matched"])
+    stats.update({k: v for k, v in matched.stats.items() if k.startswith("supplement_")})
+    res["stats"] = stats   # _export_match_book 写 manifest.totals 用
+
+    exported_files: list[str] = []
+    downloads: list[dict] = []
+    exported = ""
+    if export:
+        progress(92, "导出对账结果 Excel")
+        fname = f"{safe(display)}_{safe(shop_name)}_{safe(shop_code)}_{safe(period_cn)}_账单匹配结果.xlsx"
+        info = _export_match_book(out_dir, file_name=fname, res=res, detail=detail,
+                                  batch_id=batch_id, period=period, plat=plat,
+                                  shop_code=shop_code)
+        exported = info["exported"]
+        exported_files = info["exported_files"]
+        downloads = info["downloads"]
+
+    unmatched = int(stats.get("unmatched_rows") or 0)
+    status = "success" if unmatched == 0 else "partial"
+    duration = time.time() - t0
+    stats.update({
+        "oms_rows": int(total_oms), "bill_rows": int(len(bill_df)),
+        "diff_fen": int(diff_fen),
+        "std_cost_yuan": fen_to_float(cost_res.total_std_cost_fen),
+        "writeback_rows": int(len(res["oms_matched"])),
+        "exported": exported, "exported_files": exported_files, "downloads": downloads,
+        "batch_dir": str(out_dir), "stored_in_db": False,
+        "duration_sec": round(duration, 2),
+    })
+    joblog.save_job_log(
+        batch_id, stage="match", status=status, platform=plat,
+        shop_code=shop_code, period=period, bill_rows=int(len(bill_df)),
+        matched_rows=int(stats.get("matched_rows") or 0), unmatched_rows=unmatched,
+        diff_fen=int(diff_fen),
+        message=f"匹配 {stats.get('matched_rows', 0)} / 未匹配 {unmatched} / 分摊差异 {diff_fen} 分",
+        duration_sec=duration,
+    )
+    progress(100, f"匹配完成：已匹配 {stats.get('matched_rows', 0)}，未匹配 {unmatched}")
+    return StageResult(
+        stage="match", status=status, batch_id=batch_id,
+        message=(f"匹配完成：已匹配 {stats.get('matched_rows', 0)} 行，未匹配 {unmatched} 行"
+                 + (f"；秒退 {stats.get('instant_refund_rows', 0)} 行"
+                    if stats.get("instant_refund_rows") else "")),
+        data=stats,
+    )
 
 
 def run_cost(*_args: Any, **_kwargs: Any) -> StageResult:

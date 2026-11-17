@@ -188,7 +188,34 @@ def apply_cost(
             purchase_raw.append(raw if raw not in (None, "") else None)
             miss_reason.append(MISSING_NONE)
 
-    out["采购单价"] = purchase_fen
+    # 空值语义（2026-11-17 影刀10月基准逐行实测，HYK 收235/退178 全对齐）：
+    #   · 账单侧行（货款金额非空）→ NaN：原脚本 L659/L695 初始化 ""，本阶段不回填，
+    #     Excel 空白（收款已匹配 177 行、退款账单行 115+47 行全是 NaN）。
+    #   · 补录行（货款金额 NaN，_blank_oms_rows 置 None）→ 0：原脚本 L917/L943
+    #     df_out/df_in 显式赋 0.00（收款未匹配补录 58 行、退款补录 16 行全是 0）。
+    #   · 秒退重匹配行 → 0：原脚本 L824 merge_receipt_2['采购单价']=0.00。
+    #     插件 rematch 里赋 0，但货款金额非空会被上一条误判 NaN——用「数据来源=收款
+    #     且 单据类型=退款单」识别（重匹配命中才有退款单单据类型）。
+    gross_null = out["货款金额"].map(
+        lambda v: v is None or (isinstance(v, float) and v != v)
+        or (isinstance(v, str) and not v.strip())
+    ) if "货款金额" in out.columns else pd.Series(False, index=out.index)
+    # 秒退行 → 0 仅限**收款侧**：原脚本 L824 merge_receipt_2['采购单价']=0.00
+    # 只作用于收款秒退重匹配段（含未命中的 47 行 sku/单号空）。
+    # 退款侧秒退交叉标记行（L885-887）不改采购单价，保持 ""→NaN
+    # （2026-11-17 HYK 基准实测：收款秒退 47 行=0，退款秒退 47 行=NaN）。
+    instant_rec = pd.Series(False, index=out.index)
+    if {"是否秒退判断", "数据来源"}.issubset(out.columns):
+        from .config import SRC_RECEIPT as _SR
+        instant_rec = (
+            (out["是否秒退判断"].astype("string").fillna("") == "是")
+            & (out["数据来源"].astype("string").fillna("") == _SR)
+        )
+    keep_zero = gross_null | instant_rec
+    out["采购单价"] = [
+        purchase_fen[i] if keep_zero.iloc[i] else None
+        for i in range(len(purchase_fen))
+    ]
     out["成本缺失原因"] = miss_reason
 
     if force_std_as_ship:
@@ -279,19 +306,24 @@ def enrich_from_db(
     df: pd.DataFrame,
     product_df: pd.DataFrame,
     order_date_map: dict[str, str] | None = None,
+    *,
+    is_b2b: bool = False,
 ) -> pd.DataFrame:
     """用 ADB 商品主数据补款号/品类/年份/季节/品牌/吊牌价/标准成本单价，并回填订单日期。
 
-    对应原 look_sku.result 中的「匹配产品信息」段 + trade_no_fill 段。
-    与原脚本逐条对齐（2026-08 基准实测）：
-      · 按 sku 映射 6 列 + 标准成本单价；标准成本单价缺失 fillna(0)
-      · 缺失值填中文占位（无款号 / 无商品名称 / 无年份 / 无季节 / 无品牌 / 无吊牌价），
-        **不是空串**：这些列是透视分组键，空串会让 pandas groupby 丢组，
-        且基准文件里确实是「无款号」这类字面量
-      · 品牌再过一次 brand_dict（秋水伊人→QS、可可尼→CO …）；字典外 → 空串，
-        不写入字符串「None」（原脚本 .get(x) 无默认值的缺陷）
-      · 吊牌价按「元 → 分」存储（本模块金额一律分）
-      · 订单日期缺失且非秒退 → 按订单号回填
+    对应原 look_sku.result「匹配产品信息」段（B2C L1272-1341 / B2B L2179-2211）。
+    缺失语义逐列不同（2026-11-17 影刀10月基准实测，sku 未命中字典时）：
+      · 款号 / 吊牌价：原 astype(str).fillna(占位) 对 NaN 无效（已变 'nan' 串）→ **保持 NaN**
+        （明细空白；透视层再 fillna("未知")）。
+      · 商品名称 / 年份 / 季节：原 .fillna / .str 链保留 NaN → fillna 生效 →
+        「无商品名称 / 无年份 / 无季节」字面量。
+      · 品牌：原 .str.strip().fillna('无品牌') 后再 brand_dict.get('无品牌')→None → **NaN**
+        （透视层 fillna("未知")）；字典外的真实品牌名同样 → NaN。
+      · 品类：B2C 原脚本**不赋值**（保留 OMS join 值，未匹配为 NaN）；
+        B2B 从字典取，未命中 → NaN。两者透视层都 fillna("未知")。
+      · 标准成本单价：缺失 fillna(0)。
+    透视层 fillna("未知") 由 pivots.build_match_pivot 就地执行（会同步改写明细，
+    与原脚本一致——原脚本无 .copy()，明细 sheet 的品类/品牌因此也显示「未知」）。
     """
     out = df.copy()
     if out.empty:
@@ -312,36 +344,80 @@ def enrich_from_db(
 
     sku_keys = out["sku"].astype("string").fillna("").str.strip() if "sku" in out.columns else None
 
+    # 缺失语义（2026-11-17 影刀10月基准实测，对齐 look_sku L1272-1341）：
+    #   · sku 在字典里查不到（dict.get → None）→ **保留 NaN**：明细 Excel 空白，
+    #     透视分组键由 pivots 统一 fillna("未知")。旧实现 astype(str) 把 NaN 变 'nan'
+    #     再 mask(=="") 填「无款号」，导致明细/透视占位全错（HYK 47 行、VIP 成批）。
+    #   · sku 命中但字段本身是空串 → 才是「无款号/无季节…」字面量（原 fillna 只填 NaN，
+    #     空串经 .str 链保持 NaN 的分支不存在；此处显式区分）。
+    #   · 品牌：先 strip，再过 brand_dict；字典外 → NaN（原 .get(x) 无默认值），
+    #     不写「无品牌」——「无品牌」只在 DB 字段为空串时出现。
+    def _is_missing(v: Any) -> bool:
+        if v is None:
+            return True
+        try:
+            return bool(pd.isna(v))
+        except (TypeError, ValueError):
+            return False
+
+    # 逐列缺失语义不同（见 docstring）。sku 未命中字典时：
+    #   款号/吊牌价 → NaN；商品名称/年份/季节 → 占位字面量；品牌 → NaN（透视层填「未知」）。
+    _KEEP_NA = {"款号", "吊牌价", "品牌"}
     for col, placeholder, strip_suffix in _ENRICH_TEXT_COLUMNS:
         if col not in out.columns:
             out[col] = None
         if sku_keys is None or col not in maps:
-            series = out[col].astype("string").fillna("")
+            raw = out[col].tolist()
         else:
-            series = sku_keys.map(maps[col]).astype("string").fillna("")
-        if strip_suffix:
-            suffix = "年" if col == "年份" else "季"
-            series = series.str.strip().str.replace(suffix, "", regex=False)
-        else:
-            series = series.str.strip()
-        # 品牌单独走字典
-        if col == "品牌":
-            series = series.map(_brand_code)
-        elif col == "吊牌价":
-            out[col] = [to_fen(v) for v in series.tolist()]
-            continue
-        out[col] = series.mask(series == "", placeholder).tolist()
+            m = maps[col]
+            raw = [m.get(k) for k in sku_keys.tolist()]
+        vals: list[Any] = []
+        for v in raw:
+            if _is_missing(v):
+                # 字典未命中：款号/吊牌价/品牌保持 NaN；其余填占位字面量
+                vals.append(None if col in _KEEP_NA else placeholder)
+                continue
+            s = str(v).strip()
+            if strip_suffix:
+                s = s.replace("年" if col == "年份" else "季", "")
+            if col == "品牌":
+                # 原 brand_dict.get(x) 无默认值：字典外（含空串）→ None → NaN
+                vals.append(BRAND_DICT.get(s))
+            elif col == "吊牌价":
+                vals.append(to_fen(s) if s else None)
+            elif col == "款号":
+                vals.append(s if s else None)   # 命中但空串 → NaN（astype(str) 语义）
+            elif is_b2b and col in ("年份", "季节"):
+                # B2B（L2190/L2207）：.str.strip().str.replace().fillna(占位) 对空串
+                # 经 .str 链变 NaN 后 fillna 因 object dtype 失效 → 保持空白。
+                # 2026-11-17 VIP 基准实测：86/99 行 DB 季节='' 导出为空白，非「无季节」。
+                vals.append(s if s else None)
+            else:
+                vals.append(s if s else placeholder)
+        out[col] = vals
 
-    # 品类不进占位体系（原脚本未 fillna），仅去空白
-    if "品类" in maps:
-        out["品类"] = (
-            sku_keys.map(maps["品类"]).astype("string").fillna("").str.strip().tolist()
-            if sku_keys is not None else out.get("品类", "")
-        )
+    # 品类：B2C 原脚本不赋值（保留 OMS join 值，未匹配为 NaN，透视层填「未知」）；
+    # B2B 从字典取（L2184/L2199），未命中 → NaN（透视层填「未知」）。
+    if is_b2b and "品类" in maps and sku_keys is not None:
+        m = maps["品类"]
+        out["品类"] = [
+            None if _is_missing(m.get(k)) else str(m.get(k)).strip()
+            for k in sku_keys.tolist()
+        ]
 
-    # 标准成本单价：元 → 分；缺失填 0（原脚本 fillna(0.00)）
+    # 标准成本单价：元 → 分。两阶段缺失语义不同（2026-11-17 影刀10月基准实测）：
+    #   B2C（L1278）：.get(x).fillna(0.00) → 未命中填 0；
+    #   B2B（L2187/L2204）：.get(x) **无 fillna** → 未命中保持 NaN（VIP 6万行空白）。
+    #   下游标准成本计算各自兜底：B2C apply_cost safe_int(NaN)=0；
+    #   B2B match_b2b_frame pd.to_numeric(...).fillna(0) → 金额合计不受影响。
     if sku_keys is not None and unit_price:
-        out["标准成本单价"] = [to_fen(unit_price.get(k, 0)) for k in sku_keys.tolist()]
+        if is_b2b:
+            out["标准成本单价"] = [
+                None if _is_missing(unit_price.get(k)) else to_fen(unit_price.get(k))
+                for k in sku_keys.tolist()
+            ]
+        else:
+            out["标准成本单价"] = [to_fen(unit_price.get(k, 0)) for k in sku_keys.tolist()]
     elif "标准成本单价" not in out.columns:
         out["标准成本单价"] = 0
 

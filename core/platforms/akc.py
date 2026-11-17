@@ -49,6 +49,9 @@ class AkcAdapter(BillAdapter):
     display_name = "爱库存"
     bill_type = "爱库存"
     file_patterns = (".xlsx",)
+    #: B2B 渠道（2026-11-17 sku-match-revival）：不查 OMS，走 core/b2b.match_b2b_frame。
+    #: 原影刀 main.py L602-629：akc_arr → B2B_match；oms_sql_select 注释「非爱库存店铺」。
+    is_b2b = True
     default_read_options = {}
 
     @classmethod
