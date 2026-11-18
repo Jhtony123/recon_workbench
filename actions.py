@@ -2,8 +2,8 @@
 
 【2026-11-14 方案改版】只做影刀现有能力：
   · 账单整理     —— 可用（结果落文件，不入数据库）
-  · SKU 对账     —— 占位暂缓
-  · 成本匹配     —— 占位暂缓
+  · SKU 对账     —— 可用（2026-11-17 启用，2026-11-18 入口接线补齐）
+  · 成本匹配     —— 可用（2026-11-18 启用，SKU 对账下游，成功后迁移 已匹配成本/）
   · 数据库回传   —— 占位暂缓
   · 氚云对接     —— 占位暂缓（账单整理已导出氚云导入模板 sheet）
 
@@ -82,7 +82,7 @@ def _int(value: Any, default: int) -> int:
 
 
 def capability_status(**_) -> dict:
-    """五个能力的开放状态（账单整理可用，其余占位暂缓）。"""
+    """五个能力的开放状态（账单整理/SKU对账/成本匹配可用，回传/氚云暂缓）。"""
     rows = pipeline.capability_status()
     active = [r["name"] for r in rows if r["status"] == "active"]
     deferred = [r["name"] for r in rows if r["status"] != "active"]
@@ -96,8 +96,8 @@ def capability_status(**_) -> dict:
 def overview(days: Any = 90, **_) -> dict:
     """对账总览：账单整理覆盖、最近批次、店铺映射与规则条数。
 
-    改版后不再给「匹配率/未匹配差异」——SKU 对账暂缓且本地无明细数据，
-    恒 0 的匹配指标会被误读成「全部对上了」，比留空更危险。
+    总览不做跨批次「匹配率/未匹配差异」聚合（防重跑叠加误读）；
+    SKU/成本结果按批次下钻（sku_batches + 底稿）。
     """
     try:
         data = repo.overview(_int(days, 90))

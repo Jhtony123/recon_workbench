@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "recon_workbench Code Map",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "generated": "2026-11-16",
     "updated": "2026-11-18",
     "description": "对账工作台插件代码结构机器可读索引（参照 AI_RPA docs/codemap 规范）",
@@ -10,11 +10,11 @@
   "entry_points": {
     "job_entry": {
       "path": "run.py",
-      "description": "Extension Job 入口；stage=bill 真执行。⚠️ match 已在 ACTIVE_STAGES 但 run.py 仍统一调 run_bill（Q8 入口接线遗留，见 specs/2026-11-17 实施现状）；当前 match 真执行通道=直接调 core.pipeline.run_match（scripts/run_match_oct_all.py）；cost/writeback/chuanyun/full 返回 deferred 占位"
+      "description": "Extension Job 入口；2026-11-18 cost-match spec C5 按 stage 分发：bill→run_bill、match→run_match（Q8 遗留已补）、cost→run_cost（period/cost_file/bill_batch_id/include_tax）；writeback/chuanyun/full 返回 deferred 占位"
     },
     "mcp_actions": {
       "path": "actions.py",
-      "description": "23 个 MCP 工具的后端实现（config.json mcp_tools 声明驱动）"
+      "description": "24 个 MCP 工具的后端实现（config.json mcp_tools 声明驱动）；sku_match/cost_match 接异步 Job（start_recon 分发）、sku_batches 扫 sku匹配/{状态}/ 批次清单（2026-11-18）"
     },
     "config_ssot": {
       "path": "config.json",
@@ -22,7 +22,7 @@
     },
     "orchestrator": {
       "path": "core/pipeline.py",
-      "description": "run_bill → 唯品会多旬分发(_vip_expand_xuns/_vip_run_xuns) → _run_bill_single；jd 只给 period 自动推上月末~月末。run_match（2026-11-17 启用，不带成本）：bill_goods → split_bill → match_all → 分摊对平门 → finalize → 产品/成本回填 → pivots → 落 sku匹配/未匹配成本/{批次}；ACTIVE_STAGES=(bill,match)；capability_status() 的 match 状态表述待与入口接线同步"
+      "description": "run_bill → 唯品会多旬分发(_vip_expand_xuns/_vip_run_xuns) → _run_bill_single；jd 只给 period 自动推上月末~月末。run_match（2026-11-17 启用，不带成本）：bill_goods → split_bill → match_all → 分摊对平门 → finalize → 产品/成本回填 → pivots → 落 sku匹配/未匹配成本/{批次}。run_cost（2026-11-18 启用，文件态）：list_sku_batches 批次发现(未匹配成本+已匹配成本重跑) → sku_batch_units(VIP按旬) → read_match_draft 底稿 → apply_cost_stage 回填 → _cost_conserve_check 守恒门(A8) → pivots(stage=cost 重新透视 A3) → 临时名导出+6sheet校验转正 → cost底稿/manifest留痕 → 全单元成功才 migrate_sku_batch(VIP全旬成功才迁移 A6)；ACTIVE_STAGES=(bill,match,cost)；capability_status 三能力 active 与入口一致"
     },
     "platform_registry": {
       "path": "core/platforms/registry.py",
@@ -34,11 +34,11 @@
     },
     "artifacts": {
       "path": "core/artifacts.py",
-      "description": "年月层布局 {results}/{YYYY-MM}/账单整理/{批次}（2026-11-16 全流程spec；bill_root/iter_batch_dirs 兼容旧根目录）；批次命名(YYYY-MM-平台-店铺-编号,重跑覆盖;vip两层累积;akc无店铺段)/manifest/表格落盘/clear_history(scoped,回收空年月层)"
+      "description": "年月层布局 {results}/{YYYY-MM}/账单整理/{批次}（2026-11-16 全流程spec；bill_root/iter_batch_dirs 兼容旧根目录）；批次命名(YYYY-MM-平台-店铺-编号,重跑覆盖;vip两层累积;akc无店铺段)/manifest/表格落盘/clear_history(scoped,回收空年月层,不碰sku匹配/)。SKU 状态机（2026-11-18）：sku_root(三态)/list_sku_batches(批次发现)/sku_batch_units(VIP旬级单元)/read_match_draft(分域底稿,货款金额空值保NaN)/migrate_sku_batch(校验xlsx后shutil.move,目标已存在先删旧=重跑覆盖)"
     },
     "ui": {
       "path": "ui/index.html + ui/app.js",
-      "description": "vanilla 只读看板；对账总览含清空历史人工按钮(两步确认)"
+      "description": "vanilla 看板；对账总览含清空历史人工按钮(两步确认)；match/cost 页真实表单（批次选择+成本表路径+触发+watchPageJob 页内轮询终态+产物/迁移/留守提示，2026-11-18）；writeback/chuanyun 仍占位卡"
     },
     "skill_docs": {
       "path": "skills/recon_assist/",
@@ -84,7 +84,7 @@
         "cost.py",
         "writeback.py"
       ],
-      "description": "pipeline_dormant=成本/回传/全链路封存段（run_match 已于 2026-11-17 搬回 pipeline.py 启用；启用其余段须过 storage.ALLOWED_TABLES 白名单评审）；money=全程整数分；exporters.DETAIL_SHEET_COLUMNS=收/退款明细基准31列严格裁列（2026-11-18，内部三列仅留底稿csv）"
+      "description": "pipeline_dormant=回传/全链路封存段（run_match 2026-11-17 搬回启用；cost 2026-11-18 按文件态新写 run_cost，未搬 dormant 整段——其依赖退役库表；启用其余段须过 storage.ALLOWED_TABLES 白名单评审）；money=全程整数分；exporters：match 阶段 DETAIL_SHEET_COLUMNS 31列严格裁列（内部三列仅底稿csv）；cost 阶段 COST_DETAIL_SHEET_COLUMNS 32列(31+特殊情况说明)/COST_SHOP 13/COST_PRODUCT 18/COST_MATCH 14(均无店铺编码)已接线 export_cost_result；采购单价走 PURCHASE_RAW_COLUMN 原始精度出口(raw_overrides，A2)；吊牌价元文本(B2C/VIP 4位小数、AKC 1位)；id 空值=空白单元格(A5 实测修正)"
     },
     "rules": {
       "files": [
@@ -219,6 +219,18 @@
       "doc": "docs/specs/2026-11-17-sku-match-revival.md",
       "note": "业务口径 SSOT=methodology；明细 Excel 31 列（内部字段 数据来源/店铺编码/成本缺失原因 仅底稿csv）；白名单差异=冲发出商品数量笔误修正/OMS数据时点漂移/字典更新；入口接线遗留见 spec 实施现状"
     },
+    "cost_match": {
+      "paths": [
+        "core/pipeline.py(run_cost/_run_cost_unit/_cost_conserve_check/_default_cost_file/_verify_book_sheets)",
+        "core/cost.py(apply_cost_stage/load_cost_base/cost_sheet_for_period/_round_ship)",
+        "core/pivots.py(build_match_pivot/pivot_shop/pivot_product/pivot_match stage=cost)",
+        "core/exporters.py(export_cost_result/COST_*_SHEET_COLUMNS/_cost_detail_for_export)",
+        "core/artifacts.py(list_sku_batches/sku_batch_units/read_match_draft/migrate_sku_batch)",
+        "skills/recon_assist/references/cost-match-methodology.md"
+      ],
+      "doc": "docs/specs/2026-11-18-cost-match-stage.md + docs/plans/2026-11-18-cost-match-stage-plan.md",
+      "note": "业务口径 SSOT=cost-match-methodology（含§5b用户确认）；标准成本透传禁重算(A1)/采购单价raw精度出口(A2)/重写后明细重新透视(A3)/明细正数仅透视取负(A4)/id空值=空白(A5实测修正,原记录字面None是pandas读表假象)/FR行级特例(A6)/读底稿csv+HALF_UP(A7)/守恒校验(A8)；VIP全旬成功才迁移、已匹配成本重跑原地覆盖；成本表缺省 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx"
+    },
     "regression": {
       "paths": [
         "scripts/verify_export_baseline.py(工作区)",
@@ -226,9 +238,14 @@
         "scripts/run_oct.py(10月账单批量+基准比对)",
         "scripts/run_match_oct_all.py(10月SKU对账全平台批量+基准比对)",
         "scripts/diagnose_match_diff.py(差异行级归因)",
-        "scripts/verify_match_totals.py(秒退相等/货款=分摊/与bill_goods对平 三项校验)"
+        "scripts/verify_match_totals.py(秒退相等/货款=分摊/与bill_goods对平 三项校验)",
+        "scripts/run_vip_match_oct.py + verify_t1_vip_akc.py(T1 VIP三旬补跑+AKC复核)",
+        "scripts/run_cost_smoke_hyk.py(T2 HYK成本冒烟+锚点)",
+        "scripts/test_cost_migration.py(T3 迁移状态机失败注入11项)",
+        "scripts/t4_mcp_jobs.py(T4 MCP通道真实触发cost/match Job)",
+        "scripts/verify_cost_match.py(T5 全平台成本匹配 vs 影刀基准52份+守恒+回传逐格)"
       ],
-      "note": "全部数值列合计比对防假绿（基准文本数值列统一转float）；vip 大文件后台跑落日志；2026-11-18 实测 38 店三项校验全OK、差异均归因数据漂移"
+      "note": "全部数值列合计比对防假绿（含毛利率列；基准文本数值列统一转float）；vip 大文件后台跑落日志；2026-11-18 实测 38 店三项校验全OK、VIP三旬+AKC SKU基准 ALL_OK、差异均归因数据漂移"
     },
     "bugfixlog": {
       "paths": [

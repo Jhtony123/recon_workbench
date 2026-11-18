@@ -1,6 +1,6 @@
 ---
 name: recon_assist
-description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所有操作由 AI 通过 MCP 工具执行，人只提供数据源路径；管理页是只读看板+Excel下载。数据库只存店铺映射；账单整理结果落文件（交付 Excel 在批次根目录，过程底稿在 底稿/）；SKU对账已启用（core.pipeline.run_match，结果落 sku匹配/未匹配成本/；MCP/UI 入口接线遗留见 spec 实施现状）；成本匹配/数据库回传/氚云对接占位暂缓。含 AI 工作流、工具清单、数据落位与财务口径纪律。"
+description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所有操作由 AI 通过 MCP 工具执行，人只提供数据源路径；管理页是看板+Excel下载+match/cost 触发表单。数据库只存店铺映射；账单整理结果落文件（交付 Excel 在批次根目录，过程底稿在 底稿/）；SKU对账已启用（run_match，结果落 sku匹配/未匹配成本/，MCP/UI 接线 2026-11-18 补齐）；成本匹配已启用（run_cost，读 match 底稿回填财务成本表，成功后整批迁移 已匹配成本/）；数据库回传/氚云对接占位暂缓。含 AI 工作流、工具清单、数据落位与财务口径纪律。"
 ---
 
 # 对账工作台 · 插件使用说明书
@@ -42,7 +42,7 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 
 用户决策两条：
 1. **数据库不存 SKU 对账明细结果，也不存账单整理结果，只存店铺映射。**
-2. **插件只做影刀现有能力**：账单整理（可用）+ SKU对账（**2026-11-17 启用**，不带成本）+ 成本匹配 / 数据库回传 / 氚云对接（**占位暂缓**）。
+2. **插件只做影刀现有能力**：账单整理（可用）+ SKU对账（**2026-11-17 启用**，不带成本）+ 成本匹配（**2026-11-18 启用**，SKU 对账下游）+ 数据库回传 / 氚云对接（**占位暂缓**）。
 
 因此本地 SQLite 从 11 张表收窄到 **1 张表**：
 
@@ -53,7 +53,8 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 | 作业留痕 | `job_log` 表 | `data/extensions/recon_workbench/logs/jobs.jsonl` |
 | 账单整理结果 | `bill_rows` / `bill_goods` 表 | 结果根目录（默认 `data/extensions/recon_workbench/results/`，可由 `save_settings` 自定义）下 `{账期}_{平台}_账单整理_{店铺}_{时间戳}/`<br>根目录只放**交付 Excel**；`底稿/` 子目录放 `manifest.json`、`*_统一明细.xlsx`、E卡底稿、`bill_detail.parquet\|.csv`、`bill_goods.parquet\|.csv` |
 | SKU对账结果 | `oms_rows`/`match_detail`/`pivot_*`/`writeback_log` | **文件态**（2026-11-17 启用）：`{results}/{YYYY-MM}/sku匹配/未匹配成本/{批次名}/` 交付 Excel（6 sheet，明细 31 列）+ `底稿/`（match_detail/pivot_*/oms_matched csv，含内部字段）；不写任何库表 |
-| 成本/回传结果 | `cost_base`/`writeback_log` | **不落任何地方**（能力暂缓） |
+| 成本匹配结果 | `cost_base`/`writeback_log` | **文件态**（2026-11-18 启用）：同目录同名交付 Excel（6 sheet，透视 13/18/14 列无店铺编码，明细 32 列=31+特殊情况说明）+ `底稿/` cost_detail/cost_pivot_* csv + manifest（cost_file/sheet/缺失款号清单）；成功后整批迁移 `sku匹配/已匹配成本/`（VIP 全旬成功才迁移；已匹配成本内重跑原地覆盖）；不写任何库表 |
+| 回传结果 | `writeback_log` | **不落任何地方**（能力暂缓） |
 
 `storage.ALLOWED_TABLES` 是**运行时硬闸门**：任何想往退役表写的代码会抛
 `ValueError: 表名不在白名单 …（该表已在 2026-11-14 方案改版中退役）`。
@@ -61,7 +62,8 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 
 **已退役的 MCP 工具（调用会报「工具不存在」，不要再试图调）**：
 `query_match_detail` `unmatched_summary` `query_pivot` `cost_summary` `query_writeback` `load_cost_file`
-以及 `start_recon` 的 `stage=match|writeback|full` 与 `cost_file/cost_mode/include_tax/lookback_months/use_db/writeback/dry_run` 等参数。
+以及 `start_recon` 的 `stage=writeback|full` 与 `cost_mode/use_db/writeback/dry_run` 等参数。
+（2026-11-18 起 `stage=match|cost` 与 `bill_batch_id/cost_file/include_tax/lookback_months` 参数**已恢复可用**。）
 
 **总览不再给「匹配率 / 未匹配差异」**：SKU 对账暂缓且本地无明细，恒 0 的匹配指标会被误读成
 「账全部对上了」，比留空更危险。总览现在给的是账单批次、账单行、货款行、店铺映射、规则条数。
@@ -71,8 +73,8 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 | 能力 | 状态 | 工具 / 页面 | 说明 |
 |---|---|---|---|
 | 账单整理 | ✅ 可用 | `start_recon(stage=bill)` · `preview_bill` · `bill_batches` · `query_bill_rows` · `#/bill` | 各平台账单 → 统一五元口径 → Excel + parquet |
-| SKU 对账 | ✅ 核心已启用 | `core.pipeline.run_match`（批量入口 `scripts/run_match_oct_all.py`）· `#/match` 占位卡待换 | 2026-11-17 启用；⚠️ MCP `sku_match()`/`start_recon(stage=match)`/UI 表单接线遗留（spec Q8），当前真执行通道=直接调 run_match |
-| 成本匹配 | ⏸ 暂缓 | `cost_match()` → `status=deferred` · `#/cost` 占位卡 | 同上 |
+| SKU 对账 | ✅ 可用 | `sku_match()` / `start_recon(stage=match)` · `sku_batches` · `#/match` 真实表单 | 2026-11-17 启用、2026-11-18 入口接线补齐（Q8）；bill_batch_id 或 period+platform(+shop_code) 定位账单批次；批量入口 `scripts/run_match_oct_all.py` |
+| 成本匹配 | ✅ 可用 | `cost_match()` / `start_recon(stage=cost)` · `sku_batches` · `#/cost` 真实表单 | 2026-11-18 启用；period 必填，cost_file 缺省查 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx（{月}月末 sheet）；bill_batch_id 缺省=该账期全部批次（含已匹配成本重跑）；业务 SSOT=`references/cost-match-methodology.md` |
 | 数据库回传 | ⏸ 暂缓 | `writeback()` → `status=deferred` · `#/writeback` 占位卡 | **不会**修改生产库任何对账标记 |
 | 氚云对接 | ⏸ 暂缓 | `chuanyun_sync()` → `status=deferred` · `#/chuanyun` 占位卡 | 账单整理已导出「氚云导入模板」sheet，当前靠手工导入 |
 
@@ -135,7 +137,9 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 |---|---|
 | 对账总览 | 账单批次/行数/货款行、店铺映射与规则条数、能力开放状态、账期与平台覆盖、最近批次 |
 | 账单整理 | AI 引导文案 + 批次清单（Excel 下载链接，只列交付件）+ 最新批次明细行 |
-| SKU对账 / 成本匹配 / 数据库回传 / 氚云对接 | 占位卡：原本做什么 / 启用前需决定什么 |
+| SKU对账 | 触发表单（账期/平台/店铺/账单批次）+ 页内作业轮询终态 + 未匹配成本批次清单 |
+| 成本匹配 | 触发表单（账期/批次下拉/成本表路径/税口径）+ 页内作业轮询终态（产物/迁移/留守提示）+ 两态批次清单 |
+| 数据库回传 / 氚云对接 | 占位卡：原本做什么 / 启用前需决定什么 |
 | 数据源与规则 | 数据库凭据状态、店铺映射清单、平台解析规则清单（只读；维护走 AI 工具） |
 | 作业与日志 | Job 进度、作业留痕（JSONL） |
 | 设置 | 当前结果存储路径（只读；修改走 `save_settings`） |
@@ -153,8 +157,15 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
    交付 Excel 路径与 downloads 下载链接 → `query_bill_rows(batch_id)` 逐行下钻。
    向用户汇报时给**交付件**清单与货款合计；底稿（统一明细/E卡/manifest/表格）在批次内 `底稿/`，
    不必逐个罗列
-5. **查差异**：当前只能查账单层（业务类别、收款/退款合计）；**未匹配差异汇总属暂缓能力**，
-   别向用户承诺「帮你看未匹配」
+5. **SKU对账**：`sku_match(platform, shop_code, period)` 或 `start_recon(stage=match, bill_batch_id=…)`
+   → `job_status` 终态 → `sku_batches(period)` 看批次与产物。B2B（vip/akc）不查 OMS。
+6. **成本匹配**（SKU 对账下游，财务给成本表后）：`cost_match(period, cost_file?, bill_batch_id?)`
+   → `job_status` 终态。cost_file 缺省查 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx；
+   财务表在别处（如 桌面\2026.10月账单\）时显式传路径。成功后批次自动迁移 已匹配成本/；
+   汇报时给 缺失款号清单（data.missing_styles）与留守批次（data.failed_batches）。
+   业务口径疑问先读 `references/cost-match-methodology.md`。
+7. **查差异**：账单层（业务类别、收款/退款合计）+ SKU 层底稿（match_detail csv）；
+   **数据库回传/氚云推送仍属暂缓能力**，别向用户承诺
 
 ## 批次收敛纪律（查询必读）
 
@@ -222,7 +233,7 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
   这是一处**有意的口径改进**，不是等价迁移；与影刀结果比对时若发现订单日期不同属预期差异，
   差异订单号可从 `core.db.LAST_ORDER_DATE_DUPLICATES` 取得。
 
-## 财务口径纪律（暂缓能力启用后适用，先记着别丢）
+## 财务口径纪律（SKU对账/成本匹配已启用；回传/氚云暂缓部分先记着别丢）
 
 - **五类财务判断**（详见 `references/sku-match-methodology.md`）：`结转成本`（收款对上发货且历史未对账）/
   `冲成本`（退货对应发货已结转过成本或找不到出库）/ `冲发出商品`（退货对应发货从未确认收入）/

@@ -2,7 +2,7 @@
   "name": "recon_workbench",
   "version": "0.2.0",
   "display_name": "对账工作台",
-  "description": "电商财务月度对账工作台（2026-11-14 方案改版）：数据库只存店铺映射；账单整理可用并把结果落文件（Excel + parquet），SKU对账 / 成本匹配 / 数据库回传 / 氚云对接为占位暂缓。承接原影刀RPA「资金账单匹配sku对账」，去 xbot 依赖、模块化分层、凭据走环境变量。",
+  "description": "电商财务月度对账工作台：数据库只存店铺映射；账单整理 / SKU对账 / 成本匹配可用，结果落文件（Excel + 底稿 csv），成本匹配成功后批次迁移 未匹配成本→已匹配成本；数据库回传 / 氚云对接占位暂缓。承接原影刀RPA「资金账单匹配sku对账」，去 xbot 依赖、模块化分层、凭据走环境变量。",
   "entry_script": "run.py",
   "allowed_domains": ["127.0.0.1"],
   "table_prefix": "ext_recon_workbench_",

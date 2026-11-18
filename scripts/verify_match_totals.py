@@ -13,6 +13,7 @@ import pandas as pd
 from core import artifacts
 
 SKU_ROOT = r"C:\Users\贺杰\Desktop\账单\2026-10\sku匹配\未匹配成本"
+COSTED_ROOT = r"C:\Users\贺杰\Desktop\账单\2026-10\sku匹配\已匹配成本"
 BILL_ROOT = r"C:\Users\贺杰\Desktop\账单\2026-10\账单整理"
 TOL = 0.02
 
@@ -33,18 +34,34 @@ def fsum(vals):
 
 
 def main():
-    want = set(sys.argv[1:])
+    args = sys.argv[1:]
+    costed_only = "--costed" in args   # 只校验成本阶段产物（已匹配成本/）
+    want = set(a for a in args if not a.startswith("--"))
     rows = []
-    for d in sorted(os.listdir(SKU_ROOT)):
+    # 2026-11-18：成本匹配启用后批次会迁移到 已匹配成本/，两态目录都扫；
+    # 同名批次以 已匹配成本 优先（cost 阶段产物是最新口径）。
+    dirs = {}
+    roots = [COSTED_ROOT] if costed_only else [SKU_ROOT, COSTED_ROOT]
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for d in sorted(os.listdir(root)):
+            dirs[d] = os.path.join(root, d)
+    for d, dpath in sorted(dirs.items()):
         code = d.rsplit("-", 1)[-1]
         if want and code not in want:
             continue
-        xls = [f for f in os.listdir(os.path.join(SKU_ROOT, d)) if f.endswith(".xlsx")]
+        xls = [f for f in os.listdir(dpath) if f.endswith(".xlsx") and not f.endswith(".cost-tmp.xlsx")]
         if not xls:
             continue
-        p = os.path.join(SKU_ROOT, d, xls[0])
-        rec = pd.read_excel(p, sheet_name="收款匹配")
-        ref = pd.read_excel(p, sheet_name="退款匹配")
+        # VIP 多旬一目录多份：全部读入合并（bill_goods 也按旬合并，口径对齐）
+        recs, refs = [], []
+        for f in sorted(xls):
+            p = os.path.join(dpath, f)
+            recs.append(pd.read_excel(p, sheet_name="收款匹配"))
+            refs.append(pd.read_excel(p, sheet_name="退款匹配"))
+        rec = pd.concat(recs, ignore_index=True)
+        ref = pd.concat(refs, ignore_index=True)
         issues = []
         # --- 1 秒退逐单相等
         r_yes = rec[rec["是否秒退判断"].astype(str).str.strip() == "是"]
@@ -72,6 +89,14 @@ def main():
             if os.path.isfile(gp):
                 goods = pd.read_parquet(gp) if ext == ".parquet" else pd.read_csv(gp)
                 break
+        if goods is None:
+            # VIP 多旬：底稿按旬子目录隔离，逐旬 bill_goods 合并
+            import glob
+            parts = []
+            for gp in sorted(glob.glob(os.path.join(bp, "*", "bill_goods.*"))):
+                parts.append(pd.read_parquet(gp) if gp.endswith(".parquet") else pd.read_csv(gp))
+            if parts:
+                goods = pd.concat(parts, ignore_index=True)
         if goods is None:
             issues.append("[3账单] 无bill_goods")
         else:

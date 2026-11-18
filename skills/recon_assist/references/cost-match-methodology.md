@@ -44,7 +44,10 @@
 3. `发货成本 = round(数量 × 采购单价, 2)` —— **元域乘完再 round**（L81/L137）。
    ⚠️ 不得「单价先量化到分再乘数量」：10月末 13623 行单价小数超 2 位，
    先量化会累积 ±1 分差（插件 core/cost.py `_round_ship` 用 Decimal 原始精度复刻）。
-4. `结算金额 fillna(0).astype(float)`。
+4. `结算金额 fillna(0).astype(float)`。⚠️ **货款金额不 fillna**：补录/秒退未命中行
+   基准是空白单元格（2026-11-18 单元格级实测：HYK 收 11/退 16、KS001 7、DY020 3），
+   空值保持空白（合计不变，但空态须与基准一致；pandas 读表会把空白读成 NaN，
+   判空必须用 isna 而非 is None）。
 5. **占位符重写**（与 SKU 阶段不同！）：
    - `款号`：`str.replace("None","无款号")` + `fillna("无款号")`
      （SKU 阶段秒退/未匹配行款号是字面串 "None" 或空白 → 本阶段统一「无款号」）；
@@ -96,30 +99,36 @@
 - `chuanyun`（L740）：账单整理结果 → 氚云导入模板（收款>0→资金方向收款、退款>0→付款，
   按 店铺×业务类别 透视）。**消费的是账单整理产物，不是成本匹配产物**。
 
-## 5. 插件迁移现状（2026-11-18）
+## 5. 插件实施现状（2026-11-18 已启用）
 
-已就绪（dormant 封存段 + 独立模块，2026-08 三层回归曾全绿）：
-- `core/cost.py`：`load_cost_base`（mode=style 默认、按账期推 sheet `cost_sheet_for_period`、
-  保留原始精度 unit_cost_raw）、`apply_cost`（两条成本线分离、_round_ship 元域 Decimal、
-  成本缺失原因区分 款号缺失/成本表无此款）、`enrich_from_db`。
-- `core/pivots.py`：`_add_margin(stage="cost", include_tax)` 已实现 /1.13 与含税双口径、bp 存率。
-- `core/pipeline_dormant.py run_match`：cost_file/cost_mode/cost_sheet/include_tax/force_std_as_ship
-  参数通道完整（但依赖退役库表，须按文件态改造）。
+**stage=cost 已落地**（spec：docs/specs/2026-11-18-cost-match-stage.md，A1–A8 全实现）：
+- `core/pipeline.py run_cost`（文件态新写，未搬 dormant 整段）：批次发现
+  （`artifacts.list_sku_batches`，未匹配成本+已匹配成本重跑）→ VIP 旬级单元
+  （`sku_batch_units`）→ 读 match 底稿（`read_match_draft`，分域全列）→
+  `cost.apply_cost_stage` 回填 → 守恒自检（A8，货款/分摊/结算/数量/标准成本合计恒等）→
+  `pivots.*(stage="cost")` 从重写后明细重新透视（A3）→ 临时名导出+6-sheet 校验转正 →
+  cost 底稿/manifest 留痕（cost_file/sheet/缺失款号清单/税率）→ 全单元成功才
+  `artifacts.migrate_sku_batch`（VIP 全旬成功才迁移，A6；已匹配成本内重跑原地覆盖）。
+- `core/cost.py apply_cost_stage`（独立分支，match 语义不动）：标准成本透传禁重算（A1）、
+  采购单价全 fillna(0) + `采购单价_raw` 原始精度展示列（A2）、占位符重写（分平台：
+  B2C 品牌/品类空→未知；VIP/AKC 品类空→字面 'None'；AKC 季节空保持空白）、
+  id 空值→**空白单元格**（A5 实测修正：原记录「字面串 None」是 pandas 读表假象）、
+  FR 行级特例（店铺名称含唯品会 & 品牌==FR → 发货成本=标准成本、采购单价=0）、
+  特殊情况说明列（无款号/成本表无此款/空）、缺失款号清单进 CostResult.missing_styles。
+- `core/exporters.py export_cost_result`：COST_SHOP 13 / COST_PRODUCT 18 / COST_MATCH 14
+  （均无店铺编码）+ COST_DETAIL 32（31+特殊情况说明）常量**已接线**；
+  采购单价走 raw_overrides 原始精度出口；吊牌价元文本（B2C/VIP 4 位小数、AKC 1 位）。
+- 入口：`run.py`/`actions.start_recon` 按 stage 分发（match Q8 遗留一并补齐）；
+  MCP `cost_match()`/`sku_match()`/`sku_batches()` 接真执行；UI match/cost 真实表单。
+- 成本表缺省查找：结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx；用户指定 cost_file 双通道；
+  异形表转换层留接口（遇真实异形表再实现映射）。
+- 回归：`scripts/verify_cost_match.py`（全平台 vs 影刀基准 52 份 + 守恒 + 回传逐格 + 锚点）、
+  `run_cost_smoke_hyk.py`（HYK 冒烟 SMOKE_OK）、`test_cost_migration.py`（失败注入 11/11）、
+  `t4_mcp_jobs.py`（MCP 真实触发 4/4）。
 
-**待改造/待确认（spec 输入）**：
-1. **阶段拆分**：影刀是独立下游步骤（读 SKU 匹配 Excel → 写 成本匹配/）；插件当前 run_match
-   是「匹配+成本」一体。已启用的 match 阶段不带成本表，成本匹配应做成**独立 stage=cost**，
-   输入=sku匹配/未匹配成本/{批次} 产物，输出=sku匹配/已匹配成本/{批次}（状态机迁移）。
-2. **apply_cost 空值语义冲突**：现 implementation 保留 SKU 阶段 NaN/0 语义（账单行 NaN、
-   补录/秒退 0），但影刀**成本匹配阶段**是全部 fillna(0)——两阶段语义不同，
-   cost 阶段须按 §2 重写（含占位符 None→无款号/无吊牌价）。
-3. **FR 特例粒度**：dormant 用整店 force_std_as_ship，影刀是**行级**（唯品会 & 品牌FR）；
-   VIP 非 FR 行要查成本表，整店开关会错。须改行级条件。
-4. **透视列集**：cost 阶段店铺/款号/匹配透视均无店铺编码（13/18/14 列），
-   与 match 阶段（14/19/15）不同，exporters 须按阶段裁列。
-5. **成本表缺失行**：有款号但表无此款 → 采购单价 0、发货成本 0（DY009 实测 9 行），
-   插件另有「成本缺失原因」诊断列（仅底稿，不进 Excel）。
-6. 税率 1.13 是否固定（源码字面量）；成本表文件命名/sheet 规则是否每月稳定。
+**历史待改造项（已全部解决，留档）**：阶段拆分/空值语义冲突/FR 行级/透视列集/缺失行标记
+见 spec A1–A8 与 docs/bugfixlog/2026-11-18/cost-match-stage-fixes.md。
+税率 1.13 固定常量（`pivots.VAT_DIVISOR`，财务特殊说明才改）；include_tax 开关保留默认关。
 
 ## 5b. 用户确认决策（2026-11-18，spec 依据）
 

@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | date | 2026-11-18 |
-| status | reviewed（2026-11-18 审核修订：补 7 处缺口，见「审核修订记录」；待实施） |
+| status | implemented（2026-11-18 T1–T6 落地；A5 按单元格级实测修正，见「实施修订」） |
 | scope | core/pipeline.py（新增 run_cost）、core/cost.py、core/pivots.py、core/exporters.py、core/artifacts.py、run.py、actions.py、config.json、UI；参照影刀 cost_match.py / main.py「成本价匹配」分支 |
 | 业务 SSOT | skills/recon_assist/references/cost-match-methodology.md（2026-11-18 精读+10月基准逐行互验；含 §5b 用户确认决策） |
 
@@ -48,8 +48,10 @@
    keep_zero/NaN 分支是 match 阶段语义，须加 stage 参数或独立 cost 分支，不得复用）；
 3. 发货成本=round(|数量|×原始精度单价, 2)（元域 Decimal 乘完再 round，禁先量化到分；
    HALF_UP 与 pandas half-even 在 10 月全量数据实测 0 分歧行，维持 HALF_UP 并登记）；
-4. 占位符重写：款号 None/空→无款号、吊牌价 None→无吊牌价、商品名称/年份/季节/品牌照基准；
-   **id 列空值→字面串 "None"**（影刀 astype(str) 副作用，基准 47 行实测；为对齐基准照复刻）；
+4. 占位符重写：款号 None/空→无款号、吊牌价 None→无吊牌价、商品名称/年份/季节照基准；
+   品牌/品类分平台（B2C 空→未知；VIP/AKC 品类空→字面 'None'；AKC 季节空保持空白）；
+   **id 列空值→空白单元格**（⚠️ 实施修订：原 A5 记录「字面串 None」是 pandas 读表假象，
+   openpyxl 单元格级实测基准是 NoneType 空白，HYK 47 行、VIP/AKC 全空）；
 5. **FR 行级特例**：店铺名称含「唯品会」& 品牌==FR → 发货成本=标准成本
    （改造点：dormant 的整店 force_std_as_ship 改行级；VIP 非 FR 正常查表，AKC 无特例）；
 6. **标准成本/标准成本单价一律透传，禁止重算**（审核新增，关键）：
@@ -139,6 +141,21 @@
 | A6 | 迁移粒度未覆盖 VIP 多旬/AKC 渠道批次/重跑场景 | C4：全旬成功才迁移、渠道粒度、已匹配成本可重跑、临时名+校验后 move |
 | A7 | 输入源未定（Excel vs 底稿）；舍入模式未论证 | C2.0：读底稿 csv（分域全列，已验证与 Excel 等价）；HALF_UP vs half-even 10月全量 0 分歧，维持 HALF_UP 登记 |
 | A8 | 守恒校验缺失（成本回填不得动货款/分摊/数量/标准成本） | 验收：逐列合计守恒 + 回传表逐格一致 |
+
+## 实施修订（2026-11-18 T1–T6 落地实测）
+
+| # | 修订 | 依据 |
+|---|------|------|
+| R1 | A5 修正：id 空值=**空白单元格**（NoneType），非字面串 "None"；原记录是 pandas 读表假象 | probe_cost_cells.py 单元格级实测（HYK 47 行、VIP/AKC 全空） |
+| R2 | 占位符分平台：B2C 品牌/品类空→未知；VIP/AKC 品类空→字面 'None'；AKC 季节空保持空白；吊牌价元文本（B2C/VIP 4 位小数、AKC 1 位） | probe_cost_cells3/4 实测 |
+| R3 | 货款金额补录/秒退未命中行**保持空白**（不 fillna(0)）；合计不变但空态须与基准一致 | probe_gross_blank.py（HYK 收11/退16、KS001 7、DY020 3） |
+| R4 | match 阶段 skipped 的空批次（DY017 无货款/DYY001 无出入库单）cost 阶段跳过不算失败 | jobs.jsonl match 终态 |
+| R5 | FR 行发货成本校验按特例（=标准成本）而非查表公式；VIP 三旬 [SHIP] 差异行数恰=FR 行数证实 | verify_cost_match.py 修正后 VIP 0 diff |
+
+实施结果：T1 VIP 三旬+AKC SKU 基准 ALL_OK；T2 HYK 冒烟 SMOKE_OK（毛利 21499.84/id 空白 47/逐行 0 差）；
+T3 失败注入 11/11；T4 MCP 真实触发 4/4 + validate/探活零报错；T5 全量 41 单元/38 批迁移，
+差异归因 **39 店全部继承 SKU 阶段 OMS 漂移、0 新增逻辑回归**（attribute_cost_diff.py）；
+守恒校验（A8）与回传表逐格全过。详见 docs/bugfixlog/2026-11-18/cost-match-stage-fixes.md。
 
 ## 遗留与后续
 

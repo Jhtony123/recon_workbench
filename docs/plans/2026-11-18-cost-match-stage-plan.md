@@ -5,7 +5,7 @@
 | date | 2026-11-18 |
 | spec | [../specs/2026-11-18-cost-match-stage.md](../specs/2026-11-18-cost-match-stage.md)（reviewed，Q1–Q6 全确认 + A1–A8 审核修订） |
 | 业务 SSOT | skills/recon_assist/references/cost-match-methodology.md（含 §5b 用户确认决策） |
-| 状态 | 待实施 |
+| 状态 | 已实施（2026-11-18 T1–T6 完成；实测修订见 spec「实施修订」R1–R5 与 bugfixlog cost-match-stage-fixes） |
 
 ## 0. 现状盘点（探查结论，决定 task 粒度）
 

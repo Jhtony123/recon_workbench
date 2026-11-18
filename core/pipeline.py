@@ -1302,6 +1302,7 @@ def run_cost(
     exported_files: list[str] = []
     unit_reports: list[dict] = []
     failed_batches: list[dict] = []
+    skipped_batches: list[dict] = []
     migrated: list[str] = []
     all_missing: set[str] = set()
     n_ok = n_partial = 0
@@ -1310,7 +1311,13 @@ def run_cost(
         bplat = b.platform or plat
         units = artifacts.sku_batch_units(b.dir)
         if not units:
-            failed_batches.append({"batch": b.dir.name, "reason": "无 match 底稿（半截批次？）"})
+            if not any(b.dir.glob("*.xlsx")):
+                # match 阶段 skipped（账期无货款/无出入库单，如 DY017/DYY001）：
+                # 空目录无成本可做 → 跳过不算失败（joblog 里 match 终态可查）。
+                skipped_batches.append({"batch": b.dir.name,
+                                        "reason": "SKU对账 skipped（无货款/无出入库单），空批次跳过"})
+                continue
+            failed_batches.append({"batch": b.dir.name, "reason": "有交付件但无 match 底稿（半截批次）"})
             continue
         in_costed = b.dir.parent.name == artifacts.SKU_STATE_COSTED
         unit_results: list[dict] = []
@@ -1357,19 +1364,25 @@ def run_cost(
     total_rows = sum(r["rows"] for r in unit_reports)
     ship_fen = sum(r["ship_cost_fen"] for r in unit_reports)
     if not unit_reports:
-        status = "failed"
-        msg = "成本匹配失败：" + "；".join(
-            f"{f['batch']}({f.get('reason') or f.get('units_failed')})" for f in failed_batches)[:500]
+        if failed_batches:
+            status = "failed"
+            msg = "成本匹配失败：" + "；".join(
+                f"{f['batch']}({f.get('reason') or f.get('units_failed')})" for f in failed_batches)[:500]
+        else:
+            status = "skipped"
+            msg = f"无可做成本匹配的批次（{len(skipped_batches)} 个空批次为 SKU 对账 skipped）"
     elif failed_batches:
         status = "partial"
-        msg = (f"成本匹配部分完成：{len(unit_reports)} 单元成功 / {len(failed_batches)} 批次留守；"
-               f"缺失款号 {len(all_missing)} 个")
+        msg = (f"成本匹配部分完成：{len(unit_reports)} 单元成功 / {len(failed_batches)} 批次留守"
+               + (f" / {len(skipped_batches)} 空批次跳过" if skipped_batches else "")
+               + f"；缺失款号 {len(all_missing)} 个")
     elif all_missing:
         status = "partial"
         msg = f"成本匹配完成（{len(unit_reports)} 单元），{len(all_missing)} 个款号成本表无此款（填0+特殊情况说明）"
     else:
         status = "success"
-        msg = f"成本匹配完成：{len(unit_reports)} 单元 / {total_rows} 行，发货成本 {fen_to_float(ship_fen)} 元"
+        msg = (f"成本匹配完成：{len(unit_reports)} 单元 / {total_rows} 行，发货成本 {fen_to_float(ship_fen)} 元"
+               + (f"（{len(skipped_batches)} 空批次跳过）" if skipped_batches else ""))
 
     joblog.save_job_log(
         batch_id, stage="cost", status=status, platform=plat or "all",
@@ -1389,6 +1402,7 @@ def run_cost(
             "exported": exported_files[0] if exported_files else "",
             "exported_files": exported_files,
             "migrated": migrated, "failed_batches": failed_batches,
+            "skipped_batches": skipped_batches,
             "unit_reports": unit_reports,
             "stored_in_db": False, "duration_sec": round(duration, 2),
         },

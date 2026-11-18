@@ -260,9 +260,9 @@ def bill_batch_detail(batch_id: str = "", **kw: Any) -> dict[str, Any]:
 def overview(days: int = 90) -> dict[str, Any]:
     """管理页总览。
 
-    改版后不再有「匹配率 / 未匹配差异」—— SKU 对账占位暂缓，本地也没有明细数据。
-    这里如实给出**账单整理覆盖**与**能力开放状态**，而不是显示一堆恒为 0 的匹配指标
-    （恒 0 会被误读成「对账全部对上了」，比留空更危险）。
+    总览不展示「匹配率 / 未匹配差异」聚合指标——跨批次聚合会把重跑结果叠在一起
+    （批次收敛纪律），恒 0 或虚高都会被误读。这里如实给出**账单整理覆盖**与
+    **能力开放状态**；SKU/成本明细按批次下钻（sku_batches + 底稿）。
     """
     from .pipeline import capability_status
 
@@ -285,8 +285,8 @@ def overview(days: int = 90) -> dict[str, Any]:
         },
         "deferred": {
             "enabled": False,
-            "reason": "SKU 对账 / 成本匹配 / 数据库回传 / 氚云对接按方案改版暂缓开放",
-            "note": "匹配率与未匹配差异需 SKU 对账启用后才有意义，当前不展示。",
+            "reason": "数据库回传 / 氚云对接按方案改版暂缓开放（账单整理/SKU对账/成本匹配已启用）",
+            "note": "总览不做跨批次匹配率聚合（防重跑叠加误读）；SKU/成本结果按批次下钻。",
         },
         "capabilities": capability_status(),
         "platforms": cov.get("platforms") or [],

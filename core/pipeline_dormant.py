@@ -1,8 +1,14 @@
-"""【休眠模块 · 2026-11-14 方案改版后未接线】SKU对账 / 成本匹配 / 回传 / 全链路编排。
+"""【休眠模块 · 2026-11-14 方案改版后未接线】回传 / 全链路编排（成本段仅作口径参考）。
 
 ⚠️ 本文件**不在任何运行路径上**：run.py / actions.py / core/pipeline.py 都不 import 它。
 保留它的理由：这里的匹配、分摊、成本、透视、回传逻辑是三层回归全绿的成果
 （账单 30/30、匹配 8/8、成本 5/5、分摊差异恒 0 分），重新启用时不必重写。
+
+启用进度：
+  · run_match 已于 2026-11-17 搬回 core/pipeline.py（文件态，sku-match-revival spec）；
+  · 成本匹配已于 2026-11-18 按**文件态新写** core/pipeline.run_cost（cost-match-stage
+    spec，A1–A8）——未搬本文件成本段：其依赖退役库表，且整店 force_std_as_ship
+    开关已按审核改为行级（唯品会 & FR）。本文件成本段只作口径参考。
 
 ⚠️ 直接运行会失败，因为它依赖已退役的库表（repo.T_BILL / T_GOODS / T_OMS /
 T_MATCH / T_PIVOT_* / T_WRITEBACK）—— 这些表名已从 storage.ALLOWED_TABLES 移除，

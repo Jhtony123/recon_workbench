@@ -197,12 +197,10 @@ def _cost_detail_for_export(df: pd.DataFrame, *, tag_decimals: int = 4) -> pd.Da
     if df is None or df.empty:
         return df if df is not None else pd.DataFrame()
     out = df.copy()
-    # 货款金额：match 阶段补录/秒退未命中行是空白，cost 阶段基准实测全有值
-    # （影刀读 Excel 后 fillna(0) 口径）——空值 → 0，不留空白。
-    if "货款金额" in out.columns:
-        out["货款金额"] = out["货款金额"].map(
-            lambda v: 0 if v is None or (isinstance(v, float) and v != v)
-            or (isinstance(v, str) and v.strip().lower() in ("", "nan", "none")) else v)
+    # 货款金额：补录/秒退未命中行**保持空白**（2026-11-18 单元格级基准实测：
+    # HYK 收 11/退 16、KS001 7、DY020 3 行基准是 NoneType 空白，不是 0）。
+    # 空值由 _fen_to_yuan 归 None → 空白单元格；不得 fillna(0)（会改变基准空态，
+    # 退款侧全空白时合计 None vs 0.0 被回归误判 DIFF）。
     # 采购单价展示列 ← raw 原始精度（A2）在 _write(raw_overrides) 统一执行。
     if "吊牌价" in out.columns:
         def _tag(v):
