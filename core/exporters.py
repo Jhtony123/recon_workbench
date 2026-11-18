@@ -71,6 +71,31 @@ DETAIL_SHEET_COLUMNS = (
     "是否秒退判断", "处理意见",
 )
 
+# ------------------------------------------------------------------ cost 阶段列集
+# spec C4/Q5：成本匹配阶段透视**无店铺编码**（13/18/14），明细 32=31+特殊情况说明。
+# 2026-11-18 单元格级基准实测（probe_cost_cells/3/4）确认列头与列序。
+# 常量定义了**必须接线**（11-14/11-17 两次同类缺陷教训），回归断言守着。
+COST_SHOP_SHEET_COLUMNS = (
+    "店铺名称", "处理意见", "货款分摊金额", "订单结算金额", "数量",
+    "发货成本", "标准成本", "账单结算口径毛利", "账单结算口径毛利率",
+    "订单结算口径毛利", "订单结算口径毛利率", "冲发出商品数量", "冲发出商品",
+)
+COST_PRODUCT_SHEET_COLUMNS = (
+    "店铺名称", "处理意见", "款号", "品牌", "年份", "季节", "吊牌价",
+    "货款分摊金额", "订单结算金额", "数量", "发货成本", "标准成本",
+    "账单结算口径毛利", "账单结算口径毛利率", "订单结算口径毛利",
+    "订单结算口径毛利率", "冲发出商品数量", "冲发出商品",
+)
+COST_MATCH_SHEET_COLUMNS = (
+    "店铺名称", "款号", "处理意见", "品类", "年份", "季节", "品牌",
+    "吊牌价", "数量", "货款分摊金额", "结算金额", "标准成本", "发货成本", "数据来源",
+)
+COST_DETAIL_SHEET_COLUMNS = DETAIL_SHEET_COLUMNS + ("特殊情况说明",)
+
+# cost 阶段采购单价展示列走原始精度（A2），不经 _fen_to_yuan 量化。
+# 内部计算列「采购单价」存分，出口用「采购单价_raw」覆盖展示。
+from .cost import PURCHASE_RAW_COLUMN, SPECIAL_NOTE_COLUMN  # noqa: E402
+
 
 def _excel_engine() -> str:
     """挑一个可用的 Excel 写引擎。
@@ -159,6 +184,125 @@ def export_match_result(
     return path
 
 
+def _cost_detail_for_export(df: pd.DataFrame, *, tag_decimals: int = 4) -> pd.DataFrame:
+    """cost 阶段明细出口变换（spec C2/A2/A5，2026-11-18 单元格级基准实测）：
+
+    · 采购单价展示列 ← PURCHASE_RAW_COLUMN 原始精度（不经分→元量化）；
+    · 吊牌价：分 → 元**文本**（基准是 '688.0000' 文本列；AKC 为 1 位小数），
+      「无吊牌价」占位原样；
+    · id 空值 → 空白单元格（基准实测 NoneType；A5 原记录「字面串 None」是
+      pandas 读表假象，已修正）；
+    · 其余空串/NaN 文本列 → None（空白），与基准一致。
+    """
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+    out = df.copy()
+    # 货款金额：match 阶段补录/秒退未命中行是空白，cost 阶段基准实测全有值
+    # （影刀读 Excel 后 fillna(0) 口径）——空值 → 0，不留空白。
+    if "货款金额" in out.columns:
+        out["货款金额"] = out["货款金额"].map(
+            lambda v: 0 if v is None or (isinstance(v, float) and v != v)
+            or (isinstance(v, str) and v.strip().lower() in ("", "nan", "none")) else v)
+    # 采购单价展示列 ← raw 原始精度（A2）在 _write(raw_overrides) 统一执行。
+    if "吊牌价" in out.columns:
+        def _tag(v):
+            if v is None:
+                return None
+            if isinstance(v, str):
+                s = v.strip()
+                if not s or s.lower() in ("nan", "none", "nat"):
+                    return None
+                return s            # 「无吊牌价」等占位文本原样
+            try:
+                if pd.isna(v):
+                    return None
+            except (TypeError, ValueError):
+                pass
+            return f"{float(from_fen(v)):.{tag_decimals}f}"
+        out["吊牌价"] = out["吊牌价"].map(_tag)
+    if "id" in out.columns:
+        out["id"] = out["id"].map(
+            lambda v: None if v is None or (isinstance(v, str) and v.strip().lower() in ("", "nan", "none", "nat")) else v)
+    # 其余文本列：空串 → 空白（基准里 单号/历史对账记录/对账周期 等空值是 None）
+    for c in out.columns:
+        if c in ("吊牌价", "id", PURCHASE_RAW_COLUMN):
+            continue
+        if out[c].dtype == object:
+            out[c] = out[c].map(
+                lambda v: None if isinstance(v, str) and v.strip().lower() in ("", "nan", "none", "nat") else v)
+    return out
+
+
+def _cost_pivot_tag_text(df: pd.DataFrame, *, tag_decimals: int = 4) -> pd.DataFrame:
+    """cost 阶段透视出口：吊牌价列同明细口径转元文本（占位原样）。"""
+    if df is None or df.empty or "吊牌价" not in df.columns:
+        return df
+    out = df.copy()
+
+    def _tag(v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s if s and s.lower() not in ("nan", "none", "nat") else None
+        try:
+            if pd.isna(v):
+                return None
+        except (TypeError, ValueError):
+            pass
+        return f"{float(from_fen(v)):.{tag_decimals}f}"
+
+    out["吊牌价"] = out["吊牌价"].map(_tag)
+    return out
+
+
+def export_cost_result(
+    save_dir: Path | str,
+    *,
+    file_name: str,
+    pivot_shop: pd.DataFrame,
+    pivot_product: pd.DataFrame,
+    pivot_match: pd.DataFrame,
+    receipt: pd.DataFrame,
+    refund: pd.DataFrame,
+    oms_matched: pd.DataFrame,
+    platform: str = "",
+) -> Path:
+    """导出 cost 阶段 6 sheet（spec C4）。列集 13/18/14 + 明细 32（含特殊情况说明）。
+
+    与 export_match_result 的区别：
+      · 透视无店铺编码（COST_*_SHEET_COLUMNS 严格裁列，常量已接线）；
+      · 明细采购单价走原始精度、吊牌价元文本、id 空值空白（_cost_detail_for_export）；
+      · 金额列转元时**排除采购单价**（已是元域 raw）与吊牌价（已文本化）。
+    AKC 吊牌价文本 1 位小数（基准 '1118.0' 实测），其余平台 4 位（'688.0000'）。
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    path = save_dir / file_name
+    tag_dec = 1 if platform == "akc" else 4
+    detail_money = tuple(c for c in DETAIL_MONEY_COLUMNS if c not in ("采购单价", "吊牌价"))
+    # 透视吊牌价已由 _cost_pivot_tag_text 转元文本，不能再过 _fen_to_yuan
+    # （from_fen('688.0000') 会归 0 —— HYK 冒烟实测吊牌价合计归零的根因）。
+    pivot_money = tuple(c for c in PIVOT_MONEY_COLUMNS if c != "吊牌价")
+    match_pivot_money = tuple(c for c in MATCH_PIVOT_MONEY_COLUMNS if c != "吊牌价")
+
+    rec = _cost_detail_for_export(receipt, tag_decimals=tag_dec)
+    ref = _cost_detail_for_export(refund, tag_decimals=tag_dec)
+    p_product = _cost_pivot_tag_text(pivot_product, tag_decimals=tag_dec)
+    p_match = _cost_pivot_tag_text(pivot_match, tag_decimals=tag_dec)
+
+    with pd.ExcelWriter(str(path), engine=_excel_engine()) as writer:
+        _write(writer, pivot_shop, SHEET_SHOP, pivot_money, columns=COST_SHOP_SHEET_COLUMNS)
+        _write(writer, p_product, SHEET_PRODUCT, pivot_money, columns=COST_PRODUCT_SHEET_COLUMNS)
+        _write(writer, p_match, SHEET_MATCH, match_pivot_money, columns=COST_MATCH_SHEET_COLUMNS)
+        _write(writer, rec, SHEET_RECEIPT, detail_money, columns=COST_DETAIL_SHEET_COLUMNS,
+               raw_overrides={"采购单价": PURCHASE_RAW_COLUMN})
+        _write(writer, ref, SHEET_REFUND, detail_money, columns=COST_DETAIL_SHEET_COLUMNS,
+               raw_overrides={"采购单价": PURCHASE_RAW_COLUMN})
+        _write(writer, oms_matched, SHEET_OMS, ())
+    return path
+
+
 def export_native_book(save_dir: Path | str, *, file_name: str, sheets: list[dict]) -> Path:
     """按影刀基准格式写一簿多 sheet（2026-11-16 基准对齐）。
 
@@ -208,7 +352,8 @@ def export_bill_summary(
     return path
 
 
-def _write(writer, df: pd.DataFrame, sheet: str, money_cols, columns=None) -> None:
+def _write(writer, df: pd.DataFrame, sheet: str, money_cols, columns=None,
+           raw_overrides: dict | None = None) -> None:
     """写一个 sheet。columns 给定时按其**严格裁列并重排**（对齐基准列序）。
 
     2026-11-14：SHOP_SHEET_COLUMNS / PRODUCT_SHEET_COLUMNS 定义后就没人用过，
@@ -222,6 +367,11 @@ def _write(writer, df: pd.DataFrame, sheet: str, money_cols, columns=None) -> No
         pd.DataFrame(columns=cols).to_excel(writer, sheet_name=sheet[:31], index=False)
         return
     out = _fen_to_yuan(df, money_cols) if money_cols else df.copy()
+    # raw_overrides：展示列 ← 内部原始精度列（cost 阶段采购单价，A2）。
+    # 在裁列前覆盖，内部列（采购单价_raw）不会漏进 Excel。
+    for dst, src in (raw_overrides or {}).items():
+        if src in out.columns:
+            out[dst] = out[src].map(lambda v: 0.0 if v is None else float(v))
     if columns:
         for c in columns:
             if c not in out.columns:

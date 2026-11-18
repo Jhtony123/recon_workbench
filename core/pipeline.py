@@ -43,12 +43,11 @@ from .platforms.registry import parse_platform
 
 ProgressFn = Callable[[int, str], None]
 
-#: 真正可运行的阶段（2026-11-17 sku-match-revival spec：match 启用，不带成本表）
-ACTIVE_STAGES = ("bill", "match")
+#: 真正可运行的阶段（2026-11-18 cost-match-stage spec：cost 启用，SKU 对账下游）
+ACTIVE_STAGES = ("bill", "match", "cost")
 
-#: 占位暂缓的阶段（含 UI 导航里的四个能力）
+#: 占位暂缓的阶段（含 UI 导航里的能力）
 DEFERRED_STAGES = {
-    "cost": "成本匹配",
     "writeback": "数据库回传",
     "chuanyun": "氚云对接",
     "full": "全链路（账单+匹配+回传）",
@@ -102,15 +101,30 @@ def capability_status() -> list[dict[str, Any]]:
             "stage": "bill",
             "note": "各平台账单 → 统一口径（订单编号/资金日期/业务类别/收款/退款），"
                     "导出 Excel + parquet；结果不入数据库。",
-        }
+        },
+        {
+            "key": "match",
+            "name": "SKU对账",
+            "status": "active",
+            "stage": "match",
+            "note": "账单货款与巨益出入库单逐单匹配、货款分摊（不带成本表）。"
+                    "2026-11-17 启用；产物落 sku匹配/未匹配成本/，不写生产库。",
+        },
+        {
+            "key": "cost",
+            "name": "成本匹配",
+            "status": "active",
+            "stage": "cost",
+            "note": "财务物料成本表（不含税 SPU 单价）回填采购单价/发货成本，"
+                    "重算透视毛利（收入/1.13−发货成本）。2026-11-18 启用；"
+                    "成功后批次迁移 未匹配成本→已匹配成本。",
+        },
     ]
     notes = {
-        "match": "账单货款与巨益出入库单逐单匹配、货款分摊。算法已封存待启用。",
-        "cost": "补商品信息与成本、三分处理意见、店铺/款号透视与毛利。算法已封存待启用。",
         "writeback": "已匹配单据回写 ADB 标记「已对账」与对账周期。算法已封存待启用。",
         "chuanyun": "对账结果推送氚云。氚云导入模板 sheet 已随账单整理导出，推送通道未接。",
     }
-    for key in ("match", "cost", "writeback", "chuanyun"):
+    for key in ("writeback", "chuanyun"):
         out.append({
             "key": key,
             "name": DEFERRED_STAGES.get(key, key),
@@ -1060,9 +1074,291 @@ def run_match(
     )
 
 
-def run_cost(*_args: Any, **_kwargs: Any) -> StageResult:
-    """成本匹配 —— 占位暂缓。实现在 core/pipeline_dormant.run_match 的成本段。"""
-    return deferred_result("cost")
+#: cost 阶段守恒校验列（spec A8：成本回填不得改动这些列，逐列合计恒等）
+COST_CONSERVE_COLUMNS = ("货款金额", "货款分摊金额", "结算金额", "数量", "标准成本")
+
+
+def _cost_conserve_check(before: pd.DataFrame, after: pd.DataFrame, label: str) -> None:
+    """回填前后逐列合计守恒（A8）。货款金额空值按 0 计（补录行语义）。"""
+    for c in COST_CONSERVE_COLUMNS:
+        if c not in before.columns or c not in after.columns:
+            continue
+        b = pd.to_numeric(before[c], errors="coerce").fillna(0).sum()
+        a = pd.to_numeric(after[c], errors="coerce").fillna(0).sum()
+        if int(round(float(b))) != int(round(float(a))):
+            raise ReconError(
+                f"成本回填守恒校验失败：{label} 列「{c}」合计变化 {b} → {a}",
+                detail={"column": c, "before": float(b), "after": float(a)},
+            )
+
+
+def _default_cost_file(period: str) -> Path:
+    """成本表缺省查找（spec C5）：结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx。"""
+    ym = artifacts.period_month(period)
+    return artifacts.output_dir() / ym / f"物料成本_{ym.replace('-', '')}.xlsx"
+
+
+def _verify_book_sheets(path: Path) -> None:
+    """迁移/落盘前校验：6 sheet 完整（spec C4，临时名导出后校验再转正）。"""
+    import openpyxl
+
+    wb = openpyxl.load_workbook(str(path), read_only=True)
+    names = set(wb.sheetnames)
+    wb.close()
+    need = {exporters.SHEET_SHOP, exporters.SHEET_PRODUCT, exporters.SHEET_MATCH,
+            exporters.SHEET_RECEIPT, exporters.SHEET_REFUND, exporters.SHEET_OMS}
+    missing = need - names
+    if missing:
+        raise ReconError(f"导出校验失败：缺少 sheet {sorted(missing)}",
+                         detail={"file": str(path), "sheets": sorted(names)})
+
+
+def _run_cost_unit(unit: dict[str, Any], *, batch_dir: Path, cost_map: dict,
+                   cost_file: str, sheet: str, period: str, plat: str,
+                   shop_code: str, include_tax: bool, batch_id: str,
+                   progress: ProgressFn) -> dict[str, Any]:
+    """一个处理单元（VIP 单旬 / 普通整批 / AKC 渠道批次）的成本匹配。
+
+    读 match 底稿 → cost 阶段回填 → 守恒自检 → 重新透视（A3）→
+    临时名导出 → 6-sheet 校验 → 转正 → cost 底稿 + manifest 留痕。
+    失败抛异常，由调用方决定留守粒度（VIP 全旬成功才迁移）。
+    """
+    drafts = Path(unit["drafts_dir"])
+    detail = artifacts.read_match_draft(drafts)
+    if detail.empty:
+        raise DataSourceEmpty(f"底稿 match_detail 为空：{drafts}", detail={"dir": str(drafts)})
+    label = unit.get("label") or ""
+    tag = f"{plat}/{shop_code or batch_dir.name}/{label or period}"
+
+    progress(40, f"成本回填 {tag}（{len(detail)} 行）")
+    cost_res = cost.apply_cost_stage(detail, cost_map, platform=plat, mode=cost.MODE_STYLE)
+    filled = cost_res.frame
+    _cost_conserve_check(detail, filled, tag)
+
+    progress(60, f"重新透视 {tag}")
+    # A3：必须从占位符重写后的明细重新透视（分组键已变）；mutate_detail=False
+    # （cost 阶段占位符已重写，无需再 fillna 写回）。
+    p_shop = pivots.pivot_shop(filled, include_tax=include_tax, stage="cost")
+    p_product = pivots.pivot_product(filled, include_tax=include_tax, stage="cost")
+    p_match = pivots.pivot_match(filled, stage="cost")
+    src_col = filled.get("数据来源", pd.Series(index=filled.index, dtype="object")).astype("string")
+    rec = filled[src_col == SRC_RECEIPT].copy()
+    ref = filled[src_col == SRC_REFUND].copy()
+    oms = artifacts._read_table(artifacts.resolve_table_path(drafts, artifacts.MATCH_WRITEBACK_STEM))
+
+    # 交付文件名沿用 match 产物名（影刀同名写入 成本匹配/ 的口径；状态机迁移目录）
+    man = unit.get("manifest") or {}
+    src_excel = str((man.get("files") or {}).get("excel") or "")
+    fname = Path(src_excel).name if src_excel else f"{batch_dir.name}_账单匹配结果.xlsx"
+
+    progress(80, f"导出 {tag}")
+    tmp = batch_dir / (fname + ".cost-tmp.xlsx")
+    final = batch_dir / fname
+    try:
+        exporters.export_cost_result(
+            batch_dir, file_name=tmp.name,
+            pivot_shop=p_shop, pivot_product=p_product, pivot_match=p_match,
+            receipt=rec, refund=ref, oms_matched=oms, platform=plat)
+        _verify_book_sheets(tmp)
+        tmp.replace(final)          # 同目录原子转正；失败时原交付件留守
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+    # cost 底稿（分域）+ manifest 留痕（cost_file/sheet/缺失款号/税率）
+    for stem, df in (("cost_detail", filled), ("cost_pivot_shop", p_shop),
+                     ("cost_pivot_product", p_product), ("cost_pivot_match", p_match)):
+        artifacts.write_table(drafts, stem, df, list(df.columns))
+    missing = list(cost_res.missing_styles or [])
+    if missing:
+        artifacts.write_table(drafts, "cost_missing_styles",
+                              pd.DataFrame({"款号": missing}), ["款号"])
+    new_man = dict(man)
+    new_man.update({
+        "batch_id": str(man.get("batch_id") or batch_id),
+        "stage": "cost",
+        "status": "partial" if (cost_res.missing_no_cost or cost_res.missing_no_style) else "success",
+        "cost_file": str(cost_file), "cost_sheet": str(sheet),
+        "include_tax": bool(include_tax),
+        "missing_no_style": int(cost_res.missing_no_style),
+        "missing_no_cost": int(cost_res.missing_no_cost),
+        "missing_styles": missing,
+        "cost_created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    files = dict(new_man.get("files") or {})
+    files["excel"] = str(final)
+    new_man["files"] = files
+    mp = drafts / artifacts.MANIFEST_NAME
+    import json as _json
+    tmp_mp = mp.with_suffix(".json.tmp")
+    tmp_mp.write_text(_json.dumps(new_man, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp_mp.replace(mp)
+
+    return {
+        "label": label, "rows": int(len(filled)),
+        "receipt_rows": int(len(rec)), "refund_rows": int(len(ref)),
+        "missing_no_style": int(cost_res.missing_no_style),
+        "missing_no_cost": int(cost_res.missing_no_cost),
+        "missing_styles": missing,
+        "std_cost_fen": int(cost_res.total_std_cost_fen),
+        "ship_cost_fen": int(cost_res.total_ship_cost_fen),
+        "exported": str(final),
+    }
+
+
+def run_cost(
+    *,
+    period: str = "",
+    cost_file: str = "",
+    bill_batch_id: str = "",
+    platform: str = "",
+    shop_code: str = "",
+    include_tax: bool = False,
+    progress: ProgressFn = _noop_progress,
+) -> StageResult:
+    """阶段 3：实际成本匹配（2026-11-18 cost-match-stage spec 启用，文件态）。
+
+    输入 = sku匹配/未匹配成本/{批次} 的 match 底稿（分域全列，C2.0）+
+    财务成本表（物料成本_YYYYMM.xlsx，{月}月末 sheet，规格型号=SPU 不含税单价）。
+    输出 = 同目录同名 6-sheet 交付件（cost 列集 13/18/14 + 明细 32）+ cost 底稿；
+    全部单元成功后整批迁移 未匹配成本→已匹配成本（VIP 全旬成功才迁移，A6）。
+    已匹配成本/ 内重跑：原地覆盖不迁移。不写任何库表。
+    """
+    t0 = time.time()
+    period = str(period or "").strip()
+    if not period:
+        raise ReconError("成本匹配必须指定账期 period（YYYY-MM）")
+    batch_id = repo.new_batch_id("cost")
+    progress(5, f"成本匹配 {period}")
+
+    # ---- 成本表（缺省查找 + 用户指定双通道；异形表转换层留接口，Q3）----
+    cf = Path(str(cost_file or "").strip()) if str(cost_file or "").strip() else _default_cost_file(period)
+    if not cf.is_file():
+        raise DataSourceEmpty(
+            f"成本表不存在：{cf}",
+            detail={"hint": "缺省查找 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx；"
+                            "或在参数 cost_file 指定路径。财务异形表请先转换成固定格式（Q3）。",
+                    "period": period},
+        )
+    sheet = cost.cost_sheet_for_period(period)
+    cost_map = cost.load_cost_base(str(cf), mode=cost.MODE_STYLE, sheet_name=sheet,
+                                   include_tax=include_tax)
+    if not cost_map:
+        raise ReconError(f"成本表 {cf.name} 的 sheet「{sheet}」无有效款号单价行",
+                         detail={"file": str(cf), "sheet": str(sheet)})
+    progress(15, f"成本表就绪：{cf.name} / {sheet} / {len(cost_map)} 款")
+
+    # ---- 批次发现（未匹配成本 + 已匹配成本重跑场景）----
+    plat = parse_platform(platform) if platform else ""
+    batches = artifacts.list_sku_batches(
+        period, states=(artifacts.SKU_STATE_PENDING_COST, artifacts.SKU_STATE_COSTED),
+        platform=plat, shop_code=shop_code)
+    if bill_batch_id:
+        target = str(bill_batch_id).strip()
+        batches = [b for b in batches
+                   if target in (b.batch_id, b.dir.name)
+                   or any(str((u.get("manifest") or {}).get("batch_id") or "") == target
+                          for u in artifacts.sku_batch_units(b.dir))]
+    if not batches:
+        raise DataSourceEmpty(
+            "没有可做成本匹配的 SKU 对账批次，请先执行「SKU对账」",
+            detail={"period": period, "platform": plat, "shop_code": shop_code,
+                    "bill_batch_id": bill_batch_id},
+        )
+
+    exported_files: list[str] = []
+    unit_reports: list[dict] = []
+    failed_batches: list[dict] = []
+    migrated: list[str] = []
+    all_missing: set[str] = set()
+    n_ok = n_partial = 0
+
+    for b in batches:
+        bplat = b.platform or plat
+        units = artifacts.sku_batch_units(b.dir)
+        if not units:
+            failed_batches.append({"batch": b.dir.name, "reason": "无 match 底稿（半截批次？）"})
+            continue
+        in_costed = b.dir.parent.name == artifacts.SKU_STATE_COSTED
+        unit_results: list[dict] = []
+        unit_errors: list[dict] = []
+        for u in units:
+            try:
+                r = _run_cost_unit(
+                    u, batch_dir=b.dir, cost_map=cost_map, cost_file=str(cf),
+                    sheet=str(sheet), period=period, plat=bplat,
+                    shop_code=b.shop_code, include_tax=include_tax,
+                    batch_id=batch_id, progress=progress)
+                unit_results.append(r)
+                exported_files.append(r["exported"])
+                all_missing.update(r["missing_styles"])
+            except Exception as exc:
+                unit_errors.append({"label": u.get("label") or b.dir.name,
+                                    "error": f"{type(exc).__name__}: {str(exc)[:300]}"})
+        if unit_errors:
+            # VIP 单旬失败 → 整目录留守（A6）；其余批次粒度同理
+            failed_batches.append({"batch": b.dir.name, "units_failed": unit_errors,
+                                   "units_ok": [r["label"] or "(整批)" for r in unit_results]})
+            continue
+        # 全部单元成功 → 迁移（已匹配成本内重跑原地覆盖不迁移）
+        if not in_costed:
+            try:
+                dst = artifacts.migrate_sku_batch(b.dir)
+                migrated.append(str(dst))
+                exported_files = [str(dst / Path(f).name) if Path(f).parent == b.dir else f
+                                  for f in exported_files]
+            except OSError as exc:
+                failed_batches.append({"batch": b.dir.name, "reason": f"迁移失败：{exc}"})
+                continue
+        unit_reports.extend(unit_results)
+        if any(r["missing_no_cost"] or r["missing_no_style"] for r in unit_results):
+            n_partial += 1
+        else:
+            n_ok += 1
+
+    duration = time.time() - t0
+    total_rows = sum(r["rows"] for r in unit_reports)
+    ship_fen = sum(r["ship_cost_fen"] for r in unit_reports)
+    if not unit_reports:
+        status = "failed"
+        msg = "成本匹配失败：" + "；".join(
+            f"{f['batch']}({f.get('reason') or f.get('units_failed')})" for f in failed_batches)[:500]
+    elif failed_batches:
+        status = "partial"
+        msg = (f"成本匹配部分完成：{len(unit_reports)} 单元成功 / {len(failed_batches)} 批次留守；"
+               f"缺失款号 {len(all_missing)} 个")
+    elif all_missing:
+        status = "partial"
+        msg = f"成本匹配完成（{len(unit_reports)} 单元），{len(all_missing)} 个款号成本表无此款（填0+特殊情况说明）"
+    else:
+        status = "success"
+        msg = f"成本匹配完成：{len(unit_reports)} 单元 / {total_rows} 行，发货成本 {fen_to_float(ship_fen)} 元"
+
+    joblog.save_job_log(
+        batch_id, stage="cost", status=status, platform=plat or "all",
+        shop_code=shop_code, period=period, bill_rows=total_rows,
+        message=msg + (f"；迁移 {len(migrated)} 批" if migrated else ""),
+        duration_sec=duration,
+    )
+    progress(100, msg)
+    return StageResult(
+        stage="cost", status=status, batch_id=batch_id, message=msg,
+        data={
+            "period": period, "cost_file": str(cf), "cost_sheet": str(sheet),
+            "include_tax": bool(include_tax),
+            "units_ok": len(unit_reports), "rows": total_rows,
+            "ship_cost_yuan": fen_to_float(ship_fen),
+            "missing_styles": sorted(all_missing),
+            "exported": exported_files[0] if exported_files else "",
+            "exported_files": exported_files,
+            "migrated": migrated, "failed_batches": failed_batches,
+            "unit_reports": unit_reports,
+            "stored_in_db": False, "duration_sec": round(duration, 2),
+        },
+    )
 
 
 def run_writeback(*_args: Any, **_kwargs: Any) -> StageResult:
@@ -1100,7 +1396,7 @@ def run_full(params: dict[str, Any], progress: ProgressFn = _noop_progress) -> d
         export=str(params.get("export", "1")) not in ("0", "false", "False"),
         progress=prog,
     )
-    deferred = [DEFERRED_STAGES[k] for k in ("match", "cost", "writeback", "chuanyun")]
+    deferred = [DEFERRED_STAGES[k] for k in ("writeback", "chuanyun")]
     data = dict(res.data or {})
     data["deferred_stages"] = deferred
     data["note"] = DEFERRED_NOTE

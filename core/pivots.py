@@ -228,7 +228,8 @@ def _negate_cols(df: pd.DataFrame, cols) -> pd.DataFrame:
     return out
 
 
-def build_match_pivot(detail: pd.DataFrame, *, mutate_detail: bool = False) -> pd.DataFrame:
+def build_match_pivot(detail: pd.DataFrame, *, mutate_detail: bool = False,
+                      stage: str = "match") -> pd.DataFrame:
     """匹配透视 df_pivot（原 look_sku.result L1559-1629 / B2B L2233-2293）。
 
     收款侧：数量取 abs，其余金额原样。
@@ -262,6 +263,11 @@ def build_match_pivot(detail: pd.DataFrame, *, mutate_detail: bool = False) -> p
         sub = sub.copy()
         for c in index:
             if c not in sub.columns or c in _KEEP_NA_KEYS:
+                continue
+            # cost 阶段：占位符已在 apply_cost_stage 重写（无款号/无吊牌价/未知/
+            # 无年份/无季节；VIP 品类='None'），**不得**再 fillna("未知") 覆盖
+            # （A3：分组键已变，必须按重写后键集合透视）。
+            if stage == "cost":
                 continue
             # B2B 品类/季节特例：原脚本 L2185/L2190 经 .astype(str)/.str 链后列变
             # object dtype，fillna("未知") 失效 → 基准透视里是空白
@@ -393,9 +399,21 @@ def _assemble_pivot(
         if col not in amt.columns:
             amt[col] = None
     if "吊牌价" in amt.columns:
-        # NaN 保持空白（基准空款号组吊牌价空白），有值才量化到分
-        amt["吊牌价"] = [None if v is None or (isinstance(v, float) and v != v) or v == "" else safe_int(v)
-                     for v in amt["吊牌价"].tolist()]
+        # NaN 保持空白（基准空款号组吊牌价空白），有值才量化到分。
+        # cost 阶段占位文本（「无吊牌价」）原样保留——safe_int 会把它压成 0。
+        def _tag_val(v):
+            if v is None or (isinstance(v, float) and v != v) or v == "":
+                return None
+            if isinstance(v, str):
+                s = v.strip()
+                if not s or s.lower() in ("nan", "none", "nat"):
+                    return None
+                try:
+                    return safe_int(float(s))
+                except ValueError:
+                    return s
+            return safe_int(v)
+        amt["吊牌价"] = [_tag_val(v) for v in amt["吊牌价"].tolist()]
 
     amt = _add_margin(amt, include_tax=include_tax, stage=stage)
     for c in out_columns:
@@ -434,7 +452,7 @@ def pivot_shop(detail: pd.DataFrame, *, include_tax: bool = False,
     导致 HYK 毛利率恒 1.0、冲发出商品恒 0。
     mutate_detail=True（B2C）时同步把分组键 NaN→「未知」写回明细（原脚本就地 fillna）。
     """
-    piv = build_match_pivot(detail, mutate_detail=mutate_detail)
+    piv = build_match_pivot(detail, mutate_detail=mutate_detail, stage=stage)
     if piv.empty:
         return pd.DataFrame(columns=list(SHOP_PIVOT_COLUMNS))
 
@@ -507,7 +525,7 @@ def pivot_product(detail: pd.DataFrame, *, include_tax: bool = False,
     退款侧：match 阶段按 标准成本/货款分摊/订单结算 全 0 剔除（原 L1827/L2401）；
     cost 阶段按 发货成本/货款分摊/订单结算 全 0 剔除（cost_match 第 403 行）。
     """
-    piv = build_match_pivot(detail, mutate_detail=mutate_detail)
+    piv = build_match_pivot(detail, mutate_detail=mutate_detail, stage=stage)
     if piv.empty:
         return pd.DataFrame(columns=list(PRODUCT_PIVOT_COLUMNS))
 
@@ -562,9 +580,13 @@ def pivot_product(detail: pd.DataFrame, *, include_tax: bool = False,
     return out.loc[:, list(PRODUCT_PIVOT_COLUMNS) + ["数据来源"] + list(BP_COLUMNS)]
 
 
-def pivot_match(detail: pd.DataFrame) -> pd.DataFrame:
-    """匹配透视（原 cost_match 的 df_pivot，14 列，金额已按收/退款定号）。"""
-    return build_match_pivot(detail)
+def pivot_match(detail: pd.DataFrame, *, stage: str = "match") -> pd.DataFrame:
+    """匹配透视（原 cost_match 的 df_pivot，14 列，金额已按收/退款定号）。
+
+    stage="cost" 时分组键用 apply_cost_stage 重写后的占位符（A3），不再 fillna。
+    列集裁切（14 列无店铺编码 vs match 15 列）由 exporters 按阶段常量执行。
+    """
+    return build_match_pivot(detail, stage=stage)
 
 
 def chuanyun_template(detail: pd.DataFrame, *, period: str = "") -> pd.DataFrame:

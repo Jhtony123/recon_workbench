@@ -103,6 +103,120 @@ def build_match_batch_dir(period: str, platform: str, shop_code: str,
     return d
 
 
+def list_sku_batches(period: str, *, states: Sequence[str] = (SKU_STATE_PENDING_COST,),
+                     platform: str = "", shop_code: str = "") -> list[BillBatch]:
+    """扫 sku匹配/{状态}/ 列批次（cost 阶段批次发现，spec C4/C5）。
+
+    states 缺省只扫 未匹配成本/；重跑场景传 (未匹配成本, 已匹配成本)。
+    VIP 多旬共用一个目录：返回**目录级**批次（旬级底稿由 run_cost 内部枚举）。
+    """
+    out: list[BillBatch] = []
+    for state in states:
+        root = sku_root(period, state)
+        if not root.is_dir():
+            continue
+        for d in sorted(root.iterdir()):
+            if not d.is_dir():
+                continue
+            meta = parse_dir_name(d.name)
+            man = read_manifest(manifest_path_for(d))
+            eff_platform = str(man.get("platform") or meta.get("platform") or "")
+            eff_shop = str(man.get("shop_code") or meta.get("shop_code") or "")
+            if platform and eff_platform != platform:
+                continue
+            if shop_code and eff_shop != shop_code:
+                continue
+            out.append(BillBatch(
+                batch_id=str(man.get("batch_id") or d.name),
+                dir=d, platform=eff_platform, shop_code=eff_shop,
+                shop_name=str(man.get("shop_name") or meta.get("shop_name") or ""),
+                period=str(man.get("period") or meta.get("period") or period),
+                status=str(man.get("status") or ""),
+                created_at=str(man.get("created_at") or ""),
+                totals=dict(man.get("totals") or {}),
+                files=dict(man.get("files") or {}),
+                notes=[str(n) for n in (man.get("notes") or [])],
+            ))
+    return out
+
+
+def sku_batch_units(batch_dir: Path) -> list[dict[str, Any]]:
+    """批次目录 → 处理单元列表（VIP 按旬、其余整批）。
+
+    每单元 = {drafts_dir, manifest, label}；VIP 底稿按旬子目录隔离，
+    每旬一份 manifest + match_detail；普通批次/AKC 底稿在 底稿/ 根。
+    只认含 match_detail 表格的单元（半截批次无底稿 → 跳过并留守）。
+    """
+    d = Path(batch_dir)
+    drafts = d / DRAFTS_DIRNAME
+    units: list[dict[str, Any]] = []
+    nested = sorted(drafts.glob(f"*/{MANIFEST_NAME}")) if drafts.is_dir() else []
+    if nested:
+        for mp in nested:
+            sub = mp.parent
+            if resolve_table_path(sub, MATCH_DETAIL_STEM).is_file():
+                man = read_manifest(mp)
+                units.append({"drafts_dir": sub, "manifest": man,
+                              "label": sub.name, "subdir": f"{DRAFTS_DIRNAME}/{sub.name}"})
+    else:
+        mp = drafts / MANIFEST_NAME
+        if resolve_table_path(drafts, MATCH_DETAIL_STEM).is_file():
+            units.append({"drafts_dir": drafts, "manifest": read_manifest(mp),
+                          "label": "", "subdir": ""})
+    return units
+
+
+def read_match_draft(drafts_dir: Path) -> pd.DataFrame:
+    """读 SKU 对账底稿 match_detail（分域全列，spec C2.0）。
+
+    金额列显式转 int64；**货款金额空值保持 NaN**（补录行语义，cost 阶段
+    出口 fillna(0)，但透视/守恒按 0 计）。文本列空值 → ""（_read_table 口径）。
+    """
+    p = resolve_table_path(Path(drafts_dir), MATCH_DETAIL_STEM)
+    money_cols = ("货款金额", "货款分摊金额", "结算金额", "标准成本单价", "标准成本",
+                  "采购单价", "发货成本", "吊牌价", "数量")
+    df = _read_table(p, int_cols=tuple(c for c in money_cols if c != "货款金额"))
+    if df.empty:
+        return df
+    if "货款金额" in df.columns:
+        df["货款金额"] = pd.to_numeric(df["货款金额"], errors="coerce")
+    return df
+
+
+def migrate_sku_batch(batch_dir: Path | str, *,
+                      from_state: str = SKU_STATE_PENDING_COST,
+                      to_state: str = SKU_STATE_COSTED) -> Path:
+    """整批目录迁移（spec C4：成功 move、失败留守；同盘原子 rename）。
+
+    调用方须先确认该批次**全部单元**导出成功（VIP 全旬成功才迁移）。
+    目标已存在同名批次（重跑覆盖场景）→ 先删旧目标再 move，留痕由 joblog 负责。
+    迁移前校验：目录内至少一份交付 xlsx；失败抛 OSError，原目录留守。
+    """
+    import shutil
+
+    src = Path(batch_dir)
+    if not src.is_dir():
+        raise OSError(f"迁移源目录不存在：{src}")
+    if not any(src.glob("*.xlsx")):
+        raise OSError(f"迁移前校验失败：{src.name} 无交付 Excel")
+    dst_root = sku_root(_period_of_dir(src), to_state)
+    dst = dst_root / src.name
+    if dst.exists():
+        shutil.rmtree(dst)
+    # 同盘 rename 原子；跨盘时 shutil.move 回落 copy+delete（结果根同盘，正常走 rename）
+    shutil.move(str(src), str(dst))
+    return dst
+
+
+def _period_of_dir(batch_dir: Path) -> str:
+    """从批次目录路径反推账期（{results}/{YYYY-MM}/sku匹配/{状态}/{批次}）。"""
+    for parent in Path(batch_dir).parents:
+        if _MONTH_RE.match(parent.name):
+            return parent.name
+    meta = parse_dir_name(Path(batch_dir).name)
+    return meta.get("period") or ""
+
+
 def period_month(period: str) -> str:
     """账期 → 年月目录名（YYYY-MM）。解析不出时回落原值/未知账期，绝不落根目录。"""
     p = str(period or "").strip()

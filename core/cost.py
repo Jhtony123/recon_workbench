@@ -44,6 +44,17 @@ MISSING_NO_STYLE = "款号缺失"
 MISSING_NO_COST = "成本表无此款"
 MISSING_NONE = ""
 
+# cost 阶段「特殊情况说明」列取值（spec Q6，用户批准的基准附加列，明细第 32 列）。
+# 与内部诊断列「成本缺失原因」分开：前者进交付 Excel（措辞照用户确认），后者仅底稿。
+SPECIAL_NO_STYLE = "无款号"
+SPECIAL_NO_COST = "成本表无此款"
+SPECIAL_NONE = ""
+SPECIAL_NOTE_COLUMN = "特殊情况说明"
+
+# cost 阶段采购单价**展示列**的原始精度载体（内部列，出口层原样写出，不经分→元量化）。
+# spec A2：基准该列存全精度小数（52.212389380531），不是量化到分的值。
+PURCHASE_RAW_COLUMN = "采购单价_raw"
+
 
 @dataclass
 class CostResult:
@@ -54,6 +65,8 @@ class CostResult:
     total_std_cost_fen: int = 0
     total_ship_cost_fen: int = 0
     detail: dict = field(default_factory=dict)
+    #: cost 阶段：成本表查不到的款号清单（进运行汇报与底稿 manifest，spec Q6）
+    missing_styles: list = field(default_factory=list)
 
 
 def load_cost_base(
@@ -235,6 +248,176 @@ def apply_cost(
             "cost_keys": len(cost_map),
             "force_std_as_ship": force_std_as_ship,
         },
+    )
+
+
+def _is_na(v: Any) -> bool:
+    """None / NaN / pd.NA / 字面 nan/none 串 → True（底稿 csv 读回的空值形态）。"""
+    if v is None:
+        return True
+    try:
+        if pd.isna(v):
+            return True
+    except (TypeError, ValueError):
+        pass
+    return isinstance(v, str) and v.strip().lower() in ("", "nan", "none", "nat")
+
+
+def apply_cost_stage(
+    df: pd.DataFrame,
+    cost_map: dict[str, dict[str, int]],
+    *,
+    platform: str = "",
+    mode: str = MODE_STYLE,
+) -> CostResult:
+    """cost 阶段回填（spec C2，独立分支——**不复用** apply_cost 的 match 语义）。
+
+    输入 = SKU 对账底稿 match_detail（分域全列）。与 match 阶段的本质区别：
+      · 标准成本/标准成本单价 **一律透传禁重算**（A1：保 VIP FR 结算金额特例）；
+      · 采购单价全 fillna(0)，无 NaN 语义；展示列带原始精度（A2，PURCHASE_RAW_COLUMN）；
+      · 占位符重写（C2.4）：款号 None/空→无款号、吊牌价→无吊牌价、
+        商品名称/年份/季节→占位字面量；品牌/品类按平台（B2C→未知；
+        VIP 品类→字面 'None'、季节空→无季节；AKC 季节空保持空白）——
+        2026-11-18 单元格级基准实测（probe_cost_cells3）；
+      · id 空值→**空白**（基准实测 NoneType；spec A5 原记录「字面串 None」
+        是 pandas 读表假象，已按实测修正）；
+      · FR 行级特例（A6）：店铺名称含「唯品会」& 品牌==FR → 发货成本=标准成本，
+        采购单价=0（基准实测 FR 行采购单价全 0）；
+      · 特殊情况说明列（Q6）：无款号 / 成本表无此款 / 空；FR 特例不标注。
+    明细保持正数（A4）：数量 abs，货款/分摊/结算不动；取负只发生在透视。
+    """
+    out = df.copy()
+    if out.empty:
+        return CostResult(frame=out)
+
+    for c in ("sku", "款号", "数量", "标准成本单价", "采购单价", "标准成本", "发货成本"):
+        if c not in out.columns:
+            out[c] = ""
+
+    # 数量 abs（C2.1；退款侧底稿数量本已为正，abs 幂等）
+    qty = [abs(safe_int(v)) for v in out["数量"].tolist()]
+    out["数量"] = qty
+
+    # 标准成本/标准成本单价：透传（A1）。safe_int 只规整类型，不改值。
+    out["标准成本单价"] = [safe_int(v) for v in out["标准成本单价"].tolist()]
+    out["标准成本"] = [safe_int(v) for v in out["标准成本"].tolist()]
+
+    # ---- 占位符重写（先于查表：款号 None/空 → 无款号）----
+    is_vip = platform == "vip"
+    is_akc = platform == "akc"
+
+    def _rewrite(col: str, placeholder: str) -> None:
+        if col not in out.columns:
+            out[col] = placeholder
+            return
+        out[col] = [placeholder if _is_na(v) else str(v).strip() or placeholder
+                    for v in out[col].tolist()]
+
+    _rewrite("款号", PLACEHOLDER_STYLE)
+    _rewrite("商品名称", PLACEHOLDER_NAME)
+    _rewrite("年份", PLACEHOLDER_YEAR)
+    # 季节：B2C/VIP 空→无季节；AKC 空保持空白（基准实测 AKC 无空季节行，
+    # 但 B2B 季节 DB 空串在 SKU 阶段导出为空白，cost 阶段 astype(str) 不产生占位）
+    if is_akc:
+        if "季节" in out.columns:
+            out["季节"] = ["" if _is_na(v) else str(v).strip() for v in out["季节"].tolist()]
+    else:
+        _rewrite("季节", PLACEHOLDER_SEASON)
+    # 品牌：B2C 空→未知；B2B 账单自带品牌，空→未知兜底
+    if "品牌" in out.columns:
+        out["品牌"] = ["未知" if _is_na(v) else str(v).strip() or "未知"
+                    for v in out["品牌"].tolist()]
+    else:
+        out["品牌"] = "未知"
+    # 品类：B2C 空→未知（match 阶段透视已 fillna）；B2B（VIP/AKC）空→字面 'None'
+    # （影刀读 Excel 后 astype(str) 副作用；VIP 基准 70498 行、AKC 匹配透视
+    # 'None' 组均实测，probe_cost_cells3/4）
+    if "品类" in out.columns:
+        if is_vip or is_akc:
+            out["品类"] = ["None" if _is_na(v) else str(v).strip() or "None"
+                        for v in out["品类"].tolist()]
+        else:
+            out["品类"] = ["未知" if _is_na(v) else str(v).strip() or "未知"
+                        for v in out["品类"].tolist()]
+    # 吊牌价：空/None→无吊牌价；有值保持**分域 int**（透视 _assemble_pivot 按分
+    # 量化、出口层再转元文本）。基准是 '688.0000'/'1118.0' 文本列，数值等价即可。
+    if "吊牌价" in out.columns:
+        out["吊牌价"] = [
+            PLACEHOLDER_PRICE if _is_na(v) else safe_int(v)
+            for v in out["吊牌价"].tolist()
+        ]
+    # id：空值→空白（基准实测 NoneType；A5 修正）
+    if "id" in out.columns:
+        out["id"] = [None if _is_na(v) else str(v).strip() for v in out["id"].tolist()]
+
+    # ---- 采购单价查表（款号颗粒度；无款号/表无此款 → 0）----
+    key_series = out["款号"] if mode == MODE_STYLE else out["sku"]
+    keys = key_series.astype("string").fillna("").str.strip()
+    shop_names = (out["店铺名称"].astype("string").fillna("")
+                  if "店铺名称" in out.columns else pd.Series("", index=out.index))
+    brands = out["品牌"].astype("string").fillna("")
+
+    purchase_fen: list[int] = []
+    purchase_raw: list[Any] = []
+    miss_reason: list[str] = []
+    special: list[str] = []
+    missing_styles: set[str] = set()
+    for i, k in enumerate(keys.tolist()):
+        is_fr = ("唯品会" in str(shop_names.iloc[i])) and (str(brands.iloc[i]) == "FR")
+        if not k or k == PLACEHOLDER_STYLE:
+            purchase_fen.append(0)
+            purchase_raw.append(None)
+            miss_reason.append(MISSING_NO_STYLE)
+            special.append(SPECIAL_NO_STYLE)
+            continue
+        hit = cost_map.get(k)
+        if hit is None:
+            purchase_fen.append(0)
+            purchase_raw.append(None)
+            miss_reason.append(MISSING_NO_COST)
+            special.append(SPECIAL_NO_COST)
+            missing_styles.add(k)
+        elif is_fr:
+            # FR 行级特例：采购单价=0（基准实测），发货成本下面用标准成本
+            purchase_fen.append(0)
+            purchase_raw.append(None)
+            miss_reason.append(MISSING_NONE)
+            special.append(SPECIAL_NONE)
+        else:
+            purchase_fen.append(int(hit.get("unit_cost_fen") or 0))
+            raw = hit.get("unit_cost_raw")
+            purchase_raw.append(raw if raw not in (None, "") else None)
+            miss_reason.append(MISSING_NONE)
+            special.append(SPECIAL_NONE)
+
+    out["采购单价"] = purchase_fen                      # 内部计算列（分）
+    out[PURCHASE_RAW_COLUMN] = [                        # 展示列原始精度（A2）
+        0.0 if r is None else float(r) for r in purchase_raw
+    ]
+    out["成本缺失原因"] = miss_reason                    # 内部诊断（仅底稿）
+    out[SPECIAL_NOTE_COLUMN] = special                  # 交付第 32 列（Q6）
+
+    # ---- 发货成本（C2.3：元域 Decimal 原始精度乘完再 round，HALF_UP）----
+    std_list = out["标准成本"].tolist()
+    ship: list[int] = []
+    for i in range(len(qty)):
+        is_fr = ("唯品会" in str(shop_names.iloc[i])) and (str(brands.iloc[i]) == "FR")
+        if is_fr:
+            ship.append(int(std_list[i]))               # FR：发货成本=标准成本（A6 行级）
+        else:
+            ship.append(_round_ship(purchase_raw[i], qty[i]))
+    out["发货成本"] = ship
+
+    return CostResult(
+        frame=out,
+        matched_rows=int(sum(1 for r in miss_reason if r == MISSING_NONE)),
+        missing_no_style=int(sum(1 for r in miss_reason if r == MISSING_NO_STYLE)),
+        missing_no_cost=int(sum(1 for r in miss_reason if r == MISSING_NO_COST)),
+        total_std_cost_fen=int(sum(out["标准成本"].tolist())),
+        total_ship_cost_fen=int(sum(ship)),
+        detail={"mode": mode, "cost_keys": len(cost_map), "stage": "cost",
+                "platform": platform},
+        missing_styles=sorted(missing_styles),
     )
 
 
