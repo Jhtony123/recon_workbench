@@ -8,6 +8,14 @@
   },
   "entries": [
     {
+      "id": "2026-11-18-distcheck-git-history-self-trigger",
+      "date": "2026-11-18",
+      "title": "dist_check git历史扫描自触发blocked：扫描器模式表裸PEM字面量入库后被git grep命中自身（修法=运行时拼接+全PEM头，顺带补EC/PKCS#8漏报面）",
+      "area": ["distcheck"],
+      "status": "fixed",
+      "file": "2026-11-18/distcheck-git-history-self-trigger.md"
+    },
+    {
       "id": "2026-11-18-cost-match-stage-fixes",
       "date": "2026-11-18",
       "title": "成本匹配实施修复集：标准成本透传禁重算(A1)/采购单价raw精度出口(A2)/透视吊牌价二次量化归零/失败终态partial不吞成功单元/缺sheet可读报错+joblog/_json未定义/A5实测修正(id空值=空白非字面None)/占位符分平台语义取证",

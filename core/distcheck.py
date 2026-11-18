@@ -140,8 +140,16 @@ def scan_git_history(root: Path | str | None = None, *,
         return {"applicable": True, "commits": 0, "findings": []}
 
     findings: list[dict] = []
-    patterns: list[tuple[str, str]] = [("private_key", "BEGIN RSA PRIVATE KEY"),
-                                       ("private_key", "BEGIN OPENSSH PRIVATE KEY")]
+    # PEM 头必须带 ----- 前后缀（真实私钥块格式），且**运行时拼接**：
+    # 若在本文件写完整字面量，git grep 会在历史里的 distcheck.py 自身命中（自触发
+    # blocked，2026-11-18 实测）；裸 "BEGIN RSA PRIVATE KEY" 也会命中本文件的模式
+    # 定义行。拼接 + 全 PEM 头双保险，与 verify_distcheck 夹具同一纪律。
+    patterns: list[tuple[str, str]] = [
+        ("private_key", "-----BEGIN " + "RSA PRIVATE KEY-----"),
+        ("private_key", "-----BEGIN " + "OPENSSH PRIVATE KEY-----"),
+        ("private_key", "-----BEGIN " + "EC PRIVATE KEY-----"),
+        ("private_key", "-----BEGIN " + "PRIVATE KEY-----"),
+    ]
     for name in (ENV_ADB_PASSWORD, ENV_H3_ENGINE_SECRET, ENV_H3_ENGINE_CODE):
         v = env(name).strip()
         if v and len(v) >= 6:
