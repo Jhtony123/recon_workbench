@@ -14,8 +14,8 @@
     "pages": [
       { "id": "home", "title": "对账总览", "hash": "#/home", "default": true },
       { "id": "bill", "title": "账单整理", "hash": "#/bill" },
-      { "id": "match", "title": "SKU对账（暂缓）", "hash": "#/match" },
-      { "id": "cost", "title": "成本匹配（暂缓）", "hash": "#/cost" },
+      { "id": "match", "title": "SKU对账", "hash": "#/match" },
+      { "id": "cost", "title": "成本匹配", "hash": "#/cost" },
       { "id": "writeback", "title": "数据库回传（暂缓）", "hash": "#/writeback" },
       { "id": "chuanyun", "title": "氚云对接（暂缓）", "hash": "#/chuanyun" },
       { "id": "sources", "title": "数据源与规则", "hash": "#/sources" },
@@ -60,7 +60,7 @@
   "mcp_tools": [
     {
       "name": "recon_workbench__capability_status",
-      "description": "五个能力的开放状态：账单整理可用；SKU对账/成本匹配/数据库回传/氚云对接占位暂缓（含启用条件与休眠代码位置）。问「现在能做什么」先看它。",
+      "description": "五个能力的开放状态：账单整理/SKU对账/成本匹配可用；数据库回传/氚云对接占位暂缓（含启用条件与休眠代码位置）。问「现在能做什么」先看它。",
       "permission": "action",
       "action": "capability_status",
       "params": [],
@@ -100,12 +100,13 @@
     },
     {
       "name": "recon_workbench__start_recon",
-      "description": "触发账单整理作业（异步 Job）。仅 stage=bill 会执行；match/cost/writeback/chuanyun/full 返回 status=deferred 占位终态，不启动作业、不写数据。需 platform、shop_code、period 或 s_date+e_date、file_paths。",
+      "description": "触发对账作业（异步 Job）。stage=bill 账单整理（platform+period/s_date+file_paths 必填）；stage=match SKU对账（bill_batch_id 或 period+platform+shop_code）；stage=cost 成本匹配（period 必填，cost_file 缺省查 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx，bill_batch_id 缺省=该账期全部批次）。writeback/chuanyun/full 返回 status=deferred 占位终态。",
       "permission": "action",
       "action": "start_recon",
       "params": [
         "stage", "platform", "shop_code", "period", "s_date", "e_date",
-        "file_paths", "extra_files", "export", "agent_session_id"
+        "file_paths", "extra_files", "export", "agent_session_id",
+        "bill_batch_id", "cost_file", "include_tax", "lookback_months"
       ],
       "max_rows": 5
     },
@@ -191,19 +192,27 @@
     },
     {
       "name": "recon_workbench__sku_match",
-      "description": "SKU对账（占位暂缓）：调用返回 status=deferred 与启用条件说明，不执行任何计算、不写数据。算法封存在 core/pipeline_dormant.py。",
+      "description": "SKU对账（异步 Job，2026-11-17 启用）：账单货款与巨益出入库单逐单匹配+货款分摊（不带成本表）。bill_batch_id 或 period+platform(+shop_code) 定位账单整理批次；产物落 sku匹配/未匹配成本/，不写生产库。用 job_status 查终态。",
       "permission": "action",
       "action": "sku_match",
-      "params": [],
+      "params": ["platform", "shop_code", "period", "s_date", "e_date", "bill_batch_id", "lookback_months", "agent_session_id"],
       "max_rows": 5
     },
     {
       "name": "recon_workbench__cost_match",
-      "description": "成本匹配（占位暂缓）：调用返回 status=deferred 与启用条件说明，不执行任何计算、不写数据。",
+      "description": "实际成本匹配（异步 Job，2026-11-18 启用）：财务物料成本表（不含税 SPU 单价）回填采购单价/发货成本，重算透视毛利（收入/1.13−发货成本）。period 必填；cost_file 缺省查 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx；bill_batch_id 缺省=该账期全部 SKU 批次（含已匹配成本重跑）。成功后整批迁移 未匹配成本→已匹配成本（VIP 全旬成功才迁移）。用 job_status 查终态。",
       "permission": "action",
       "action": "cost_match",
-      "params": [],
+      "params": ["period", "cost_file", "bill_batch_id", "platform", "shop_code", "include_tax", "agent_session_id"],
       "max_rows": 5
+    },
+    {
+      "name": "recon_workbench__sku_batches",
+      "description": "SKU对账批次清单（扫 sku匹配/{状态}/）：period 必填；state 可选 未匹配成本/已匹配成本/已回传数据库，缺省列前两态。供成本匹配选批次。",
+      "permission": "action",
+      "action": "sku_batches",
+      "params": ["period", "platform", "shop_code", "state"],
+      "max_rows": 100
     },
     {
       "name": "recon_workbench__writeback",

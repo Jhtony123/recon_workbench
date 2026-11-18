@@ -214,11 +214,15 @@ def delete_rule(platform: Any = "", rule_kind: Any = "", rule_key: Any = "", **_
 def start_recon(stage: Any = "bill", platform: Any = "", shop_code: Any = "",
                 period: Any = "", s_date: Any = "", e_date: Any = "",
                 file_paths: Any = "", extra_files: Any = "", export: Any = "1",
-                agent_session_id: Any = "", **_) -> dict:
-    """触发账单整理作业（异步 Job）。
+                agent_session_id: Any = "", bill_batch_id: Any = "",
+                cost_file: Any = "", include_tax: Any = "0",
+                lookback_months: Any = "", **_) -> dict:
+    """触发对账作业（异步 Job）。2026-11-18 cost-match spec C5：按 stage 分发。
 
-    stage 只有 bill 会真正执行；match / cost / writeback / chuanyun / full
-    直接返回占位终态（status=deferred），不启动 Job、不写任何数据。
+    stage=bill  账单整理（platform/period/file_paths 必填）；
+    stage=match SKU 对账（bill_batch_id 或 period+platform+shop_code 定位账单批次）；
+    stage=cost  成本匹配（period 必填；cost_file 缺省查 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx）；
+    writeback / chuanyun / full 仍占位暂缓（status=deferred）。
     """
     st = str(stage or "bill").strip().lower()
     if st in DEFERRED_STAGES and st not in ACTIVE_STAGES:
@@ -228,31 +232,56 @@ def start_recon(stage: Any = "bill", platform: Any = "", shop_code: Any = "",
             f"stage 非法：{st}（当前仅支持 {'/'.join(ACTIVE_STAGES)}；"
             f"{'/'.join(DEFERRED_STAGES)} 暂缓开放）")
 
-    plat = parse_platform(str(platform or ""))
-    if not plat:
-        return _fail("platform 必填（如 taobao / douyin / jd / pdd）")
-    if not (str(period or "").strip() or str(s_date or "").strip()):
-        return _fail("period 或 s_date/e_date 至少提供一组")
-    files = _as_list(file_paths)
-    if not files:
-        # 无账单文件就不该启动作业：旧版会起一个必失败的 Job，
-        # 在「作业与日志」里留一条红色失败记录，看起来像插件坏了。
-        return _fail("file_paths 必填（账单目录或文件，分号分隔）；"
-                     "只想验证映射请用 preview_bill（不落盘）")
+    plat = parse_platform(str(platform or "")) if str(platform or "").strip() else ""
+    params: dict[str, Any] = {"stage": st}
 
-    params: dict[str, Any] = {
-        "stage": "bill",
-        "platform": plat,
-        "shop_code": str(shop_code or ""),
-        # 店铺名称留空 → pipeline 查店铺映射取氚云名称（基准 Excel 同口径）
-        "shop_name": "",
-        "period": str(period or ""),
-        "s_date": str(s_date or ""),
-        "e_date": str(e_date or ""),
-        "file_paths": files,
-        "extra_files": _as_file_map(extra_files),
-        "export": str(export if export != "" else "1"),
-    }
+    if st == "bill":
+        if not plat:
+            return _fail("platform 必填（如 taobao / douyin / jd / pdd）")
+        if not (str(period or "").strip() or str(s_date or "").strip()):
+            return _fail("period 或 s_date/e_date 至少提供一组")
+        files = _as_list(file_paths)
+        if not files:
+            # 无账单文件就不该启动作业：旧版会起一个必失败的 Job，
+            # 在「作业与日志」里留一条红色失败记录，看起来像插件坏了。
+            return _fail("file_paths 必填（账单目录或文件，分号分隔）；"
+                         "只想验证映射请用 preview_bill（不落盘）")
+        params.update({
+            "platform": plat,
+            "shop_code": str(shop_code or ""),
+            # 店铺名称留空 → pipeline 查店铺映射取氚云名称（基准 Excel 同口径）
+            "shop_name": "",
+            "period": str(period or ""),
+            "s_date": str(s_date or ""),
+            "e_date": str(e_date or ""),
+            "file_paths": files,
+            "extra_files": _as_file_map(extra_files),
+            "export": str(export if export != "" else "1"),
+        })
+    elif st == "match":
+        if not (str(bill_batch_id or "").strip()
+                or (str(period or "").strip() and plat)):
+            return _fail("match 需要 bill_batch_id，或 period+platform（+shop_code）定位账单整理批次")
+        params.update({
+            "platform": plat, "shop_code": str(shop_code or ""),
+            "period": str(period or ""), "s_date": str(s_date or ""),
+            "e_date": str(e_date or ""),
+            "bill_batch_id": str(bill_batch_id or ""),
+            "export": str(export if export != "" else "1"),
+        })
+        if str(lookback_months or "").strip():
+            params["lookback_months"] = str(lookback_months).strip()
+    elif st == "cost":
+        if not str(period or "").strip():
+            return _fail("cost 需要 period（YYYY-MM）")
+        params.update({
+            "period": str(period).strip(),
+            "cost_file": str(cost_file or ""),
+            "bill_batch_id": str(bill_batch_id or ""),
+            "platform": plat, "shop_code": str(shop_code or ""),
+            "include_tax": str(include_tax or "0"),
+        })
+
     if str(agent_session_id or "").strip():
         params["agent_session_id"] = str(agent_session_id).strip()
 
@@ -264,13 +293,19 @@ def start_recon(stage: Any = "bill", platform: Any = "", shop_code: Any = "",
         return _fail(f"作业启动失败：{type(exc).__name__}: {exc}")
 
     job_id = str((job or {}).get("job_id") or "")
+    label = {"bill": "账单整理", "match": "SKU对账", "cost": "成本匹配"}[st]
+    note = {
+        "bill": "结果落 results/YYYY-MM/账单整理/{批次}/（重跑覆盖；爱库存无店铺段；"
+                "唯品会为 YYYY-MM-唯品会-唯品中国，旬文件在目录内累积）",
+        "match": "结果落 results/YYYY-MM/sku匹配/未匹配成本/{批次}/；不写生产库",
+        "cost": "读 未匹配成本/ 批次底稿回填成本；全部成功后整批迁移 已匹配成本/（VIP 全旬成功才迁移）",
+    }[st]
     return _ok(
-        f"账单整理作业已启动（{plat} · {params['period'] or params['s_date']}）",
+        f"{label}作业已启动（{plat or '全平台'} · {params.get('period') or params.get('s_date', '')}）",
         {"job_id": job_id,
          "params": {k: v for k, v in params.items() if k != "agent_session_id"},
          "stored_in_db": False,
-         "output_note": "结果落 results/YYYY-MM-中文平台名-店铺名称-店铺编号/（重跑覆盖；"
-                        "爱库存无店铺段；唯品会为 YYYY-MM-唯品会-唯品中国，旬文件在目录内累积）"},
+         "output_note": note},
     )
 
 
@@ -395,17 +430,68 @@ def query_job_log(limit: Any = 60, **_) -> dict:
                {"rows": rows, "log_file": joblog.stats().get("log_file", "")})
 
 
-# ------------------------------------------------------------------ 占位能力
+# ------------------------------------------------------------------ SKU对账 / 成本匹配（2026-11-18 启用）
 
 
-def sku_match(**_) -> dict:
-    """SKU 对账 —— 占位暂缓。"""
-    return _deferred("match")
+def sku_match(platform: Any = "", shop_code: Any = "", period: Any = "",
+              s_date: Any = "", e_date: Any = "", bill_batch_id: Any = "",
+              lookback_months: Any = "", agent_session_id: Any = "", **_) -> dict:
+    """SKU 对账（不带成本表，异步 Job）。2026-11-17 启用、2026-11-18 接线补齐。
+
+    输入 = 账单整理批次（bill_batch_id 或 period+platform+shop_code 定位）；
+    产物落 sku匹配/未匹配成本/，不写生产库。
+    """
+    return start_recon(stage="match", platform=platform, shop_code=shop_code,
+                       period=period, s_date=s_date, e_date=e_date,
+                       bill_batch_id=bill_batch_id, lookback_months=lookback_months,
+                       agent_session_id=agent_session_id)
 
 
-def cost_match(**_) -> dict:
-    """成本匹配 —— 占位暂缓。"""
-    return _deferred("cost")
+def cost_match(period: Any = "", cost_file: Any = "", bill_batch_id: Any = "",
+               platform: Any = "", shop_code: Any = "", include_tax: Any = "0",
+               agent_session_id: Any = "", **_) -> dict:
+    """实际成本匹配（异步 Job）。2026-11-18 cost-match-stage spec 启用。
+
+    period 必填；cost_file 缺省查 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx；
+    bill_batch_id 缺省 = 该账期全部 SKU 对账批次（含 已匹配成本/ 重跑）。
+    成功后整批迁移 未匹配成本→已匹配成本（VIP 全旬成功才迁移）。
+    """
+    return start_recon(stage="cost", period=period, cost_file=cost_file,
+                       bill_batch_id=bill_batch_id, platform=platform,
+                       shop_code=shop_code, include_tax=include_tax,
+                       agent_session_id=agent_session_id)
+
+
+def sku_batches(period: Any = "", platform: Any = "", shop_code: Any = "",
+                state: Any = "", **_) -> dict:
+    """SKU 对账批次清单（扫 sku匹配/{状态}/，供 cost 表单选批次）。
+
+    state 缺省列 未匹配成本+已匹配成本 两态；可指定单态。
+    """
+    st = str(state or "").strip()
+    states = (st,) if st in artifacts.SKU_STATES else (
+        artifacts.SKU_STATE_PENDING_COST, artifacts.SKU_STATE_COSTED)
+    if not str(period or "").strip():
+        return _fail("period 必填（YYYY-MM）")
+    try:
+        batches = artifacts.list_sku_batches(
+            str(period).strip(), states=states,
+            platform=parse_platform(str(platform or "")) if str(platform or "").strip() else "",
+            shop_code=str(shop_code or ""))
+    except Exception as exc:
+        return _fail(f"扫描 SKU 批次失败：{type(exc).__name__}: {exc}")
+    rows = []
+    for b in batches:
+        units = artifacts.sku_batch_units(b.dir)
+        rows.append({
+            "batch_id": b.batch_id, "dir": str(b.dir), "name": b.dir.name,
+            "state": b.dir.parent.name, "platform": b.platform,
+            "shop_code": b.shop_code, "shop_name": b.shop_name,
+            "period": b.period, "status": b.status,
+            "units": [u.get("label") or "(整批)" for u in units],
+            "excel": b.files.get("excel", ""),
+        })
+    return _ok(f"SKU 批次 {len(rows)} 个（{'/'.join(states)}）", {"rows": rows})
 
 
 def writeback(**_) -> dict:

@@ -762,11 +762,130 @@ function placeholderLoader(key) {
   return () => { renderPlaceholder(key); };
 }
 
+/* ---------------- SKU对账 / 成本匹配（2026-11-18 启用，真实表单） ---------------- */
+
+/** 页内作业轮询：与 pollJob 同口径，但渲染到本页 host（不占用作业页）。 */
+async function watchPageJob(jobId, hostId, onDone) {
+  const host = $(hostId);
+  const tick = async () => {
+    try {
+      const out = await apiGet(`${BASE}/jobs/${jobId}`);
+      const job = out.job || out;
+      const pct = Number(job.progress_pct || job.progress?.pct || 0);
+      const msg = humanize(job.message || job.progress?.label || "");
+      const st = String(job.status || "").toLowerCase();
+      if (host) {
+        host.style.display = "";
+        host.innerHTML = `
+          <div class="progress-row">
+            <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, Math.max(0, pct))}%"></div></div>
+            <div class="progress-label">${statusTag(job.status)} ${esc(msg)} · ${pct}%</div>
+          </div>`;
+      }
+      if (TERMINAL.includes(st)) {
+        clearInterval(timer);
+        const kind = st === "success" ? "ok" : (st === "failed" || st === "timed_out" ? "danger" : "warn");
+        toast(msg || st, kind);
+        const data = (job.result && job.result.data) || job.data || {};
+        const files = data.exported_files || (data.exported ? [data.exported] : []);
+        if (host && files.length) {
+          host.innerHTML += `<p class="hint">产物：${files.map((p) => `<code class="path">${esc(String(p).split(/[\\/]/).pop())}</code>`).join("、")}</p>`
+            + ((data.migrated || []).length ? `<p class="hint">已迁移 ${data.migrated.length} 批 → 已匹配成本/</p>` : "")
+            + ((data.failed_batches || []).length ? `<p class="hint">留守批次：${esc(JSON.stringify(data.failed_batches))}</p>` : "");
+        }
+        if (onDone) await onDone(job);
+        void loadJobsPage();
+      }
+    } catch (e) {
+      if (host) host.innerHTML = `<div class="empty">读取作业状态失败：${esc(humanize(e.message || e))}</div>`;
+    }
+  };
+  const timer = setInterval(() => void tick(), 1500);
+  await tick();
+}
+
+async function loadSkuBatchRows(period, state) {
+  const res = await tool("recon_workbench__sku_batches", { period, state: state || "" })
+    .catch((e) => ({ data: {}, error: e.message }));
+  return rowsOf(res);
+}
+
+function skuBatchTableRows(rows) {
+  return rows.map((b) => ({
+    批次: b.name, 状态目录: b.state, 平台: b.platform,
+    店铺: b.shop_name || b.shop_code || "-", 单元: (b.units || []).join("、"),
+    终态: b.status || "-", Excel文件: b,
+  }));
+}
+
+async function loadMatchPage() {
+  await loadPlatformsInto([$("match-platform")]).catch(() => {});
+  const period = ($("match-period")?.value || "").trim();
+  const rows = period ? await loadSkuBatchRows(period, "未匹配成本") : [];
+  renderTable($("match-batches"), skuBatchTableRows(rows), {
+    empty: period ? "该账期还没有 SKU 对账批次" : "填写账期后点「刷新」查看批次",
+    render: { Excel文件: (b) => excelLinks({ excel: b.excel, downloads: [] }) },
+  });
+}
+
+async function loadCostPage() {
+  const period = ($("cost-period")?.value || "").trim();
+  const rows = period ? await loadSkuBatchRows(period, "") : [];
+  renderTable($("cost-batches"), skuBatchTableRows(rows), {
+    empty: period ? "该账期还没有 SKU 对账批次（先做 SKU 对账）" : "填写账期后点「刷新批次」",
+    render: { Excel文件: (b) => excelLinks({ excel: b.excel, downloads: [] }) },
+  });
+  // 批次下拉（全部批次 + 逐批）
+  const sel = $("cost-batch");
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">全部批次</option>`
+      + rows.map((b) => `<option value="${esc(b.name)}">${esc(b.name)}（${esc(b.state)}）</option>`).join("");
+    if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+  }
+}
+
+async function runMatchFlow() {
+  const period = ($("match-period")?.value || "").trim();
+  const platform = $("match-platform")?.value || "";
+  const shop = ($("match-shop")?.value || "").trim();
+  const batch = ($("match-batch")?.value || "").trim();
+  if (!batch && !(period && platform)) {
+    toast("请填写 账期+平台，或账单批次 ID", "warn"); return;
+  }
+  const btn = $("btn-run-match");
+  btn.disabled = true;
+  try {
+    const jobId = await startJob({
+      stage: "match", period, platform, shop_code: shop, bill_batch_id: batch,
+    }, null);
+    stopPolling();   // 页内轮询接管，避免与作业页轮询双写
+    if (jobId) await watchPageJob(jobId, "match-job-progress", () => loadMatchPage());
+  } finally { btn.disabled = false; }
+}
+
+async function runCostFlow() {
+  const period = ($("cost-period")?.value || "").trim();
+  if (!period) { toast("成本匹配必须填账期（YYYY-MM）", "warn"); return; }
+  const btn = $("btn-run-cost");
+  btn.disabled = true;
+  try {
+    const jobId = await startJob({
+      stage: "cost", period,
+      cost_file: ($("cost-file")?.value || "").trim(),
+      bill_batch_id: $("cost-batch")?.value || "",
+      include_tax: $("cost-tax")?.value || "0",
+    }, null);
+    stopPolling();
+    if (jobId) await watchPageJob(jobId, "cost-job-progress", () => loadCostPage());
+  } finally { btn.disabled = false; }
+}
+
 const PAGE_LOADERS = {
   home: loadHome,
   bill: loadBillPage,
-  match: placeholderLoader("match"),
-  cost: placeholderLoader("cost"),
+  match: loadMatchPage,
+  cost: loadCostPage,
   writeback: placeholderLoader("writeback"),
   chuanyun: placeholderLoader("chuanyun"),
   sources: loadSourcesPage,
@@ -798,8 +917,15 @@ function bindAll() {
     });
   });
 
-  // 占位卡启动即渲染，避免用户先看到空白再被填上
-  ["match", "cost", "writeback", "chuanyun"].forEach(renderPlaceholder);
+  // 占位卡启动即渲染，避免用户先看到空白再被填上（match/cost 已启用真实表单）
+  ["writeback", "chuanyun"].forEach(renderPlaceholder);
+  // SKU对账 / 成本匹配（2026-11-18 cost-match spec C5）
+  bind("btn-run-match", runMatchFlow);
+  bind("btn-run-cost", runCostFlow);
+  bind("btn-match-refresh", loadMatchPage);
+  bind("btn-cost-refresh", loadCostPage);
+  $("match-period")?.addEventListener("change", () => void loadMatchPage());
+  $("cost-period")?.addEventListener("change", () => void loadCostPage());
 
   // 【2026-11-16 AI 原生化】人工操作入口（整理表单/试跑/导入店铺表/规则编辑/
   // 设置保存）已移除；对应能力由 AI 通过 MCP 工具执行：

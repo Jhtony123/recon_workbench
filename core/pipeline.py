@@ -1123,6 +1123,8 @@ def _run_cost_unit(unit: dict[str, Any], *, batch_dir: Path, cost_map: dict,
     临时名导出 → 6-sheet 校验 → 转正 → cost 底稿 + manifest 留痕。
     失败抛异常，由调用方决定留守粒度（VIP 全旬成功才迁移）。
     """
+    import json as _json
+
     drafts = Path(unit["drafts_dir"])
     detail = artifacts.read_match_draft(drafts)
     if detail.empty:
@@ -1168,6 +1170,21 @@ def _run_cost_unit(unit: dict[str, Any], *, batch_dir: Path, cost_map: dict,
             except OSError:
                 pass
 
+    # 下载副本（宿主 downloads 路由，与 match 阶段同口径，供 UI 下载）
+    import shutil as _shutil
+    from .config import runtime_dir
+    dl_dir = runtime_dir() / "downloads"
+    dl_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    downloads: list[dict] = []
+    try:
+        dl_name = f"{stamp}_{final.name}"
+        _shutil.copy2(final, dl_dir / dl_name)
+        downloads.append({"name": final.name,
+                          "url": f"/agent/extensions/recon_workbench/files/downloads/{dl_name}"})
+    except OSError:
+        pass
+
     # cost 底稿（分域）+ manifest 留痕（cost_file/sheet/缺失款号/税率）
     for stem, df in (("cost_detail", filled), ("cost_pivot_shop", p_shop),
                      ("cost_pivot_product", p_product), ("cost_pivot_match", p_match)):
@@ -1190,9 +1207,9 @@ def _run_cost_unit(unit: dict[str, Any], *, batch_dir: Path, cost_map: dict,
     })
     files = dict(new_man.get("files") or {})
     files["excel"] = str(final)
+    files["downloads"] = _json.dumps(downloads, ensure_ascii=False)
     new_man["files"] = files
     mp = drafts / artifacts.MANIFEST_NAME
-    import json as _json
     tmp_mp = mp.with_suffix(".json.tmp")
     tmp_mp.write_text(_json.dumps(new_man, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     tmp_mp.replace(mp)

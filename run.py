@@ -109,19 +109,45 @@ def run(
         }
 
     try:
-        res = pipeline.run_bill(
-            platform=str(params.get("platform") or ""),
-            shop_code=str(params.get("shop_code") or ""),
-            shop_name=str(params.get("shop_name") or ""),
-            period=str(params.get("period") or ""),
-            s_date=str(params.get("s_date") or ""),
-            e_date=str(params.get("e_date") or ""),
-            file_paths=pipeline._as_list(params.get("file_paths")),
-            extra_files=pipeline._as_file_map(params.get("extra_files")),
-            batch_id=str(params.get("batch_id") or ""),
-            export=str(params.get("export", "1")) not in ("0", "false", "False"),
-            progress=prog,
-        )
+        # 按 stage 分发（2026-11-18 cost-match spec C5：补上 match 的 Q8 遗留，
+        # 不再统一调 run_bill）。
+        if stage == "match":
+            res = pipeline.run_match(
+                platform=str(params.get("platform") or ""),
+                shop_code=str(params.get("shop_code") or ""),
+                shop_name=str(params.get("shop_name") or ""),
+                period=str(params.get("period") or ""),
+                s_date=str(params.get("s_date") or ""),
+                e_date=str(params.get("e_date") or ""),
+                bill_batch_id=str(params.get("bill_batch_id") or ""),
+                lookback_months=params.get("lookback_months"),
+                export=str(params.get("export", "1")) not in ("0", "false", "False"),
+                progress=prog,
+            )
+        elif stage == "cost":
+            res = pipeline.run_cost(
+                period=str(params.get("period") or ""),
+                cost_file=str(params.get("cost_file") or ""),
+                bill_batch_id=str(params.get("bill_batch_id") or ""),
+                platform=str(params.get("platform") or ""),
+                shop_code=str(params.get("shop_code") or ""),
+                include_tax=str(params.get("include_tax", "0")) in ("1", "true", "True"),
+                progress=prog,
+            )
+        else:
+            res = pipeline.run_bill(
+                platform=str(params.get("platform") or ""),
+                shop_code=str(params.get("shop_code") or ""),
+                shop_name=str(params.get("shop_name") or ""),
+                period=str(params.get("period") or ""),
+                s_date=str(params.get("s_date") or ""),
+                e_date=str(params.get("e_date") or ""),
+                file_paths=pipeline._as_list(params.get("file_paths")),
+                extra_files=pipeline._as_file_map(params.get("extra_files")),
+                batch_id=str(params.get("batch_id") or ""),
+                export=str(params.get("export", "1")) not in ("0", "false", "False"),
+                progress=prog,
+            )
         out = _stage_result(res)
 
     except Exception as exc:  # 业务异常与意外异常都要有可读终态
