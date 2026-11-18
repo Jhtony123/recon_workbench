@@ -59,6 +59,17 @@ MATCH_SHEET_COLUMNS = (
     "店铺名称", "店铺编码", "款号", "处理意见", "品类", "年份", "季节", "品牌",
     "吊牌价", "数量", "货款分摊金额", "结算金额", "标准成本", "发货成本", "数据来源",
 )
+# 收款/退款匹配基准列序（影刀10月全平台实测均 31 列，尾列=处理意见）。
+# 2026-11-18 用户确认：数据来源/店铺编码/成本缺失原因 是插件内部字段
+# （分摊分组/成本诊断用，保留在底稿 csv），不得漏进 Excel——原 spec B3
+# 「附加列白名单」作废，明细与透视一样严格裁列。
+DETAIL_SHEET_COLUMNS = (
+    "账单周期", "订单编号", "订单日期", "货款金额", "货款分摊金额", "id", "单据类型",
+    "存货异动时间", "单号", "sku", "款号", "商品名称", "品类", "年份", "季节", "品牌",
+    "吊牌价", "数量", "店铺名称", "结算金额", "退款类型", "退款状态", "标准成本单价",
+    "标准成本", "采购单价", "发货成本", "巨益单据匹配状态", "历史对账记录", "对账周期",
+    "是否秒退判断", "处理意见",
+)
 
 
 def _excel_engine() -> str:
@@ -139,8 +150,9 @@ def export_match_result(
         # 根因：这里误传 PIVOT_MONEY_COLUMNS（含「订单结算金额」、不含「结算金额」），
         # 定义好的 MATCH_PIVOT_MONEY_COLUMNS 从未接线——与 11-14 列序常量同类缺陷。
         _write(writer, pivot_match, SHEET_MATCH, MATCH_PIVOT_MONEY_COLUMNS, columns=MATCH_SHEET_COLUMNS)
-        _write(writer, receipt, SHEET_RECEIPT, DETAIL_MONEY_COLUMNS)
-        _write(writer, refund, SHEET_REFUND, DETAIL_MONEY_COLUMNS)
+        # 2026-11-18：明细同样按基准 31 列严格裁列（内部字段只留底稿 csv）。
+        _write(writer, receipt, SHEET_RECEIPT, DETAIL_MONEY_COLUMNS, columns=DETAIL_SHEET_COLUMNS)
+        _write(writer, refund, SHEET_REFUND, DETAIL_MONEY_COLUMNS, columns=DETAIL_SHEET_COLUMNS)
         _write(writer, oms_matched, SHEET_OMS, ())
         if chuanyun is not None:
             _write(writer, chuanyun, SHEET_CHUANYUN, ("金额",))
