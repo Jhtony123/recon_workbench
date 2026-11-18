@@ -89,8 +89,9 @@ def load_cost_base(
         )
     except Exception as exc:
         raise BillParseError(
-            f"读取成本单价表失败：{type(exc).__name__}",
-            detail={"file": str(file_path), "hint": str(exc)[:200]},
+            f"读取成本单价表失败：{type(exc).__name__}（sheet=「{sheet_name}」不存在或不可读）",
+            detail={"file": str(file_path), "sheet": str(sheet_name),
+                    "hint": str(exc)[:200]},
         ) from exc
 
     if df.empty:

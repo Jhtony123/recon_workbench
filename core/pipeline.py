@@ -1232,6 +1232,7 @@ def run_cost(
     if not period:
         raise ReconError("成本匹配必须指定账期 period（YYYY-MM）")
     batch_id = repo.new_batch_id("cost")
+    plat = parse_platform(platform) if platform else ""
     progress(5, f"成本匹配 {period}")
 
     # ---- 成本表（缺省查找 + 用户指定双通道；异形表转换层留接口，Q3）----
@@ -1244,15 +1245,27 @@ def run_cost(
                     "period": period},
         )
     sheet = cost.cost_sheet_for_period(period)
-    cost_map = cost.load_cost_base(str(cf), mode=cost.MODE_STYLE, sheet_name=sheet,
-                                   include_tax=include_tax)
+    try:
+        cost_map = cost.load_cost_base(str(cf), mode=cost.MODE_STYLE, sheet_name=sheet,
+                                       include_tax=include_tax)
+    except ReconError as exc:
+        # C5：成本表缺失/sheet 不存在 → failed 可读终态 + joblog 留痕（不抛栈）
+        msg = f"成本匹配失败：{exc}"
+        joblog.save_job_log(batch_id, stage="cost", status="failed",
+                            platform=plat or "all", shop_code=shop_code, period=period,
+                            message=msg[:2000], duration_sec=time.time() - t0)
+        return StageResult(stage="cost", status="failed", batch_id=batch_id, message=msg,
+                           data={"period": period, "cost_file": str(cf), "cost_sheet": str(sheet)})
     if not cost_map:
-        raise ReconError(f"成本表 {cf.name} 的 sheet「{sheet}」无有效款号单价行",
-                         detail={"file": str(cf), "sheet": str(sheet)})
+        msg = f"成本匹配失败：成本表 {cf.name} 的 sheet「{sheet}」无有效款号单价行"
+        joblog.save_job_log(batch_id, stage="cost", status="failed",
+                            platform=plat or "all", shop_code=shop_code, period=period,
+                            message=msg, duration_sec=time.time() - t0)
+        return StageResult(stage="cost", status="failed", batch_id=batch_id, message=msg,
+                           data={"period": period, "cost_file": str(cf), "cost_sheet": str(sheet)})
     progress(15, f"成本表就绪：{cf.name} / {sheet} / {len(cost_map)} 款")
 
     # ---- 批次发现（未匹配成本 + 已匹配成本重跑场景）----
-    plat = parse_platform(platform) if platform else ""
     batches = artifacts.list_sku_batches(
         period, states=(artifacts.SKU_STATE_PENDING_COST, artifacts.SKU_STATE_COSTED),
         platform=plat, shop_code=shop_code)
@@ -1299,7 +1312,9 @@ def run_cost(
                 unit_errors.append({"label": u.get("label") or b.dir.name,
                                     "error": f"{type(exc).__name__}: {str(exc)[:300]}"})
         if unit_errors:
-            # VIP 单旬失败 → 整目录留守（A6）；其余批次粒度同理
+            # VIP 单旬失败 → 整目录留守（A6）；其余批次粒度同理。
+            # 成功单元仍计入 unit_reports（终态 partial 而非 failed——有真实产出）。
+            unit_reports.extend(unit_results)
             failed_batches.append({"batch": b.dir.name, "units_failed": unit_errors,
                                    "units_ok": [r["label"] or "(整批)" for r in unit_results]})
             continue
@@ -1311,6 +1326,8 @@ def run_cost(
                 exported_files = [str(dst / Path(f).name) if Path(f).parent == b.dir else f
                                   for f in exported_files]
             except OSError as exc:
+                # 交付件已生成（原地），只是迁移失败 → partial，成功单元计入
+                unit_reports.extend(unit_results)
                 failed_batches.append({"batch": b.dir.name, "reason": f"迁移失败：{exc}"})
                 continue
         unit_reports.extend(unit_results)
