@@ -82,7 +82,7 @@ def main():
     # ---- capability_status 与真实一致 ----
     r = call_tool("recon_workbench__capability_status", {})
     active = (r.get("data") or {}).get("active") or []
-    ok_cap = set(active) == {"账单整理", "SKU对账", "成本匹配"}
+    ok_cap = set(active) == {"账单整理", "SKU对账", "成本匹配", "数据库回传", "氚云对接"}
     print("capability active:", active, flush=True)
     results.append(("capability", ok_cap))
 

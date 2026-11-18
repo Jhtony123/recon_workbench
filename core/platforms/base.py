@@ -464,15 +464,9 @@ class BillAdapter:
         return res
 
     # ---------------- 业务编码映射
-
-    def apply_biz_codes(self, df: pd.DataFrame, code_col: str, target_col: str = STD_BIZ_CATEGORY) -> pd.DataFrame:
-        """按规则表 biz_code 映射业务类别（替代原脚本硬编码的 id_dict）。"""
-        mapping = self.biz_code_map()
-        if not mapping or code_col not in df.columns:
-            return df
-        out = df.copy()
-        out[target_col] = out[code_col].map(lambda x: mapping.get(str(x).strip(), None))
-        return out
+    # 注：通用 apply_biz_codes 已于 2026-11-18 总体 review 移除（死代码）：
+    # 各平台适配器直接消费 biz_code_map()（整表接管语义 + 各自 fallback 字典），
+    # 通用版「未命中置 None」会丢各类平台特有的兜底口径，勿复活。
 
     # ---------------- 日期过滤
 

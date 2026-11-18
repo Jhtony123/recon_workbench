@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | date | 2026-11-16 |
-| status | confirmed（目录改版+10月账单本期实施；SKU/成本/回传/氚云口径已确认、实现暂缓） |
+| status | implemented（2026-11-18 销账：目录改版+SKU对账+成本匹配+数据库回传+氚云对接五阶段全部启用；回传/氚云恒缺省 dry-run，真实写外部系统须显式 dry_run=0+用户确认；合并大表工具已由 pivot-summaries spec 承接） |
 | scope | core/artifacts.py（本期）；pipeline_dormant 启用时按本 spec 落位（后续） |
 
 ## 背景：工程两个核心目标
@@ -69,9 +69,11 @@
 - 10 月各平台与对照基准逐 sheet/列头/行数/全部数值列合计比对（防假绿）；
 - validate + 热重载 + UI 探活零报错。
 
-## 遗留与后续
+## 遗留与后续（2026-11-18 全部销账）
 
-- SKU 对账启用：pipeline_dormant 取回，输入读 账单整理 批次的 bill_goods，
-  产物落 sku匹配/未匹配成本/（每店一份）；
-- 成本匹配/回传的状态迁移函数（成功 move、失败留守）届时实现；
-- 合并大表工具（sku + 账单整理两个）独立任务。
+- SKU 对账启用 → 已落地（2026-11-17-sku-match-revival spec，run_match 全链）；
+- 成本匹配/回传状态迁移 → 已落地（artifacts.migrate_sku_batch，成功 move 失败留守；
+  cost-match / writeback 两份 11-18 spec）；
+- 合并大表工具 → 已落地（2026-11-18-pivot-summaries spec，bill/sku_pivot_summary）；
+- 氚云回传 → 已由「导出模板+手工导入」升级为 OpenAPI 推送（chuanyun spec，
+  恒缺省 dry-run，真实推送须显式 dry_run=0+用户确认）。

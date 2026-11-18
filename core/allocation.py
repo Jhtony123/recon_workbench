@@ -12,11 +12,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Sequence
 
 import pandas as pd
 
-from .config import ADVICE_CARRY, MATCHED, UNMATCHED
+from .config import UNMATCHED
 from .errors import AllocationMismatch
 from .money import allocate_exact, from_fen, safe_int, sum_fen
 
@@ -57,53 +56,9 @@ class AllocationResult:
             )
 
 
-def _subset_sum_fen(target: int, weights: Sequence[int], cap: int = MAX_DP_ROWS) -> list[int] | None:
-    """在 weights 中找一个子集，其和最接近 target（分）。返回各位置的分摊额列表。
-
-    规模超过 cap 时返回 None，由调用方走比例分摊兜底。
-    """
-    n = len(weights)
-    if n == 0:
-        return None
-    if n > cap:
-        return None
-
-    # dp[sum] = 达到该和所用的下标集合（用位掩码，n<=22 安全）
-    dp: dict[int, int] = {0: 0}
-    for i, w in enumerate(weights):
-        wi = int(w or 0)
-        if wi <= 0:
-            continue
-        for s, mask in list(dp.items()):
-            ns = s + wi
-            if ns > target and target > 0:
-                continue
-            if ns not in dp:
-                dp[ns] = mask | (1 << i)
-
-    best_sum: int | None = None
-    best_mask = 0
-    for s, mask in dp.items():
-        if best_sum is None or abs(s - target) < abs(best_sum - target):
-            best_sum, best_mask = s, mask
-
-    if best_sum is None:
-        return None
-
-    out = [0] * n
-    for i in range(n):
-        if best_mask & (1 << i):
-            out[i] = int(weights[i] or 0)
-    # 子集和与 target 的残差补给子集里最后一个非零项，保证合计精确
-    residual = int(target) - sum(out)
-    if residual != 0:
-        for i in reversed(range(n)):
-            if out[i] > 0:
-                out[i] += residual
-                break
-        else:
-            out[0] += residual
-    return out
+# 注：早期「最接近 target + 残差补尾行」版 _subset_sum_fen 已于 2026-11-18 总体 review
+# 移除（死代码）：现行口径只取**精确相等**子集（_subset_sum_exact），找不到走比例分摊，
+# 与原影刀 find_combination ±1 容差在分单位下等价。
 
 
 def allocate_group(group: pd.DataFrame) -> tuple[pd.DataFrame, str]:
@@ -322,16 +277,6 @@ def allocate(df: pd.DataFrame, *, group_col: str = "订单编号") -> Allocation
     )
 
 
-def verify_direction(
-    res_receipt: pd.DataFrame, res_refund: pd.DataFrame
-) -> dict[str, int]:
-    """收款侧与退款侧分别做分摊自检（原脚本在 exit() 前做的两次校验）。"""
-    out: dict[str, int] = {}
-    for name, df in (("receipt", res_receipt), ("refund", res_refund)):
-        if df is None or df.empty:
-            out[f"{name}_diff_fen"] = 0
-            continue
-        gross = sum_fen(df["货款金额"].tolist())
-        alloc = sum_fen(df.get("货款分摊金额", pd.Series(dtype="int64")).tolist())
-        out[f"{name}_diff_fen"] = int(gross - alloc)
-    return out
+# 注：verify_direction（收/退两侧分别自检）已于 2026-11-18 总体 review 移除（死代码）：
+# 现行对平门 = allocate() 内 AllocationResult 硬校验 + scripts/verify_match_totals.py
+# 三项金额校验（秒退相等/货款=分摊/与 bill_goods 对平），覆盖更严。

@@ -1,4 +1,4 @@
-/* 对账工作台 — 管理页逻辑（2026-11-14 方案改版）
+/* 对账工作台 — 管理页逻辑（2026-11-18 UI 精简版）
  * 契约（sop-ui-design.md §6 / sop-ai-collab.md §1.1）：
  *   · 只打同源 Sidecar API：/agent/extensions/recon_workbench/*
  *   · 「问 AI」只发 extension:ask-ai 的 wraps，芯片与气泡由宿主绘制
@@ -6,17 +6,18 @@
  *   · 元素点选由宿主 Design Mode 注入，本文件零选择器脚本
  *   · 主界面禁止暴露端口/CDP/内部 id；技术细节折叠进「高级」
  *
- * 改版要点：
- *   · 只有「账单整理」是真功能；SKU对账/成本匹配/数据库回传/氚云对接渲染占位卡
- *   · 账单结果、规则、作业留痕都是**文件态**，UI 文案不再说「入库」
- *   · 总览不再显示匹配率/未匹配差异（SKU对账暂缓，恒 0 会被误读成「全对上了」）
+ * 2026-11-18 精简（用户需求）：
+ *   · 移除 账单整理/SKU对账/成本匹配/数据库回传/氚云对接 五个能力页——
+ *     全部操作由 AI 在会话中通过 MCP 工具执行，管理页只做看板+设置
+ *   · 保留四页：对账总览 / 数据源与规则 / 作业与日志 / 设置
+ *   · 清空历史只清插件内记录（作业留痕+downloads 副本），输出目录文件不删
  */
 "use strict";
 
 const PLUGIN = "recon_workbench";
 const BASE = `/agent/extensions/${PLUGIN}`;
 
-const PAGES = ["home", "bill", "match", "cost", "writeback", "chuanyun", "sources", "jobs", "settings"];
+const PAGES = ["home", "sources", "jobs", "settings"];
 const $ = (id) => document.getElementById(id);
 
 /* ---------------- API ---------------- */
@@ -56,13 +57,7 @@ async function tool(name, params) {
   return r;
 }
 
-/** 取列表行：action 在 data.rows / data[]，read_only 在**顶层** rows。
- *
- * 2026-11-14 浏览器实测教训：read_only sql_template 工具由
- * extensions/readonly_sql.execute_readonly_query 返回 {ok,columns,rows,row_count}，
- * 行在顶层；旧 rowsOf 只看 res.data，于是恒为空且被 .catch() 静默吞掉，控制台零报错。
- * 改版后已无 read_only 工具，但这里仍两种都认，避免日后加回同类工具再踩一次。
- */
+/** 取列表行：action 在 data.rows / data[]，read_only 在**顶层** rows（两种都认）。 */
 function rowsOf(res) {
   if (!res) return [];
   if (Array.isArray(res.rows)) return res.rows;
@@ -209,8 +204,7 @@ function useInChat() {
 
 /** 汇总当前页面的关键数据作为「问 AI」正文。 */
 async function buildAskPayload(kind) {
-  const ctx = collectForm();
-  const head = `插件：对账工作台（recon_workbench）\n当前上下文：${JSON.stringify(ctx)}\n`;
+  const head = `插件：对账工作台（recon_workbench）\n`;
 
   if (kind === "batches") {
     const res = await tool("recon_workbench__bill_batches", { limit: 20 });
@@ -221,13 +215,8 @@ async function buildAskPayload(kind) {
   if (kind === "clear") {
     const res = await tool("recon_workbench__bill_batches", { limit: 30 });
     const rows = rowsOf(res);
-    const body = `${head}\n当前账单整理批次（${rows.length} 个）：\n${JSON.stringify(rows, null, 2)}\n\n我想清理其中一部分历史（按账期/平台/店铺）。请先列出可清理的条件组合让我选择，确认后调用 clear_history（confirm=yes，附 period/platform/shop_code 条件；只删命中批次，下载副本与作业留痕保留）。未经我确认不要执行。`;
+    const body = `${head}\n当前账单整理批次（${rows.length} 个）：\n${JSON.stringify(rows, null, 2)}\n\n我想清理其中一部分历史记录（按账期/平台/店铺）。注意：clear_history 只清插件内记录（作业留痕/下载副本），不删输出目录文件。请先列出可清理的条件组合让我选择，确认后调用 clear_history（confirm=yes，附 period/platform/shop_code 条件）。未经我确认不要执行。`;
     return ["按条件清理历史", body];
-  }
-  if (kind === "preview") {
-    const el = $("bill-preview-out");
-    const body = `${head}\n账单试跑结果：\n${(el && el.textContent || "").slice(0, 8000)}`;
-    return ["账单映射校验", body];
   }
   if (kind === "rules") {
     const res = await tool("recon_workbench__query_rules", { platform: $("rule-platform")?.value || "", limit: 200 });
@@ -248,114 +237,10 @@ async function buildAskPayload(kind) {
   return ["对账总览", `${head}\n总览数据：\n${JSON.stringify(res.data || {}, null, 2)}`];
 }
 
-/* ---------------- 表单 ---------------- */
-
-function monthValue(v) { return String(v || "").slice(0, 7); }
-
-function collectForm() {
-  const page = document.querySelector(".page.active");
-  const id = page ? page.dataset.page : "home";
-  const g = (k) => ($(k) ? $(k).value.trim() : "");
-  if (id === "bill") {
-    return {
-      platform: g("bill-platform"), shop_code: g("bill-shop"), period: monthValue(g("bill-period")),
-      s_date: g("bill-sdate"), e_date: g("bill-edate"),
-      file_paths: g("bill-files"), extra_files: g("bill-extra"),
-    };
-  }
-  return {};
-}
-
-/** 从账期推导默认起止日（账期通常是自然月）。 */
-function fillDatesFromPeriod(periodEl, sEl, eEl) {
-  const p = monthValue(periodEl?.value);
-  if (!p || !/^\d{4}-\d{2}$/.test(p)) return;
-  const [y, m] = p.split("-").map(Number);
-  const s = `${p}-01`;
-  const last = new Date(y, m, 0).getDate();
-  const e = `${p}-${String(last).padStart(2, "0")}`;
-  if (sEl && !sEl.value) sEl.value = s;
-  if (eEl && !eEl.value) eEl.value = e;
-}
-
-function validateParams(p, needFiles) {
-  if (!p.platform) return "请选择平台";
-  if (!p.period && !(p.s_date && p.e_date)) return "请填写账期，或同时填写开始与结束日期";
-  if (needFiles && !p.file_paths) return "请填写账单文件或目录路径";
-  if (!p.shop_code) return "请填写店铺编码";
-  return "";
-}
-
-/* ---------------- 占位卡 ---------------- */
-
-/** 四个暂缓能力共用一张占位卡：说清「暂缓原因 / 原本做什么 / 启用条件」，
- *  不留空白页（空白会被当成 bug），也不放假按钮（点了没反应更糟）。 */
-const PLACEHOLDER_META = {
-  match: {
-    title: "SKU 对账",
-    does: "把账单里的货款行与巨益出入库单（B2C配货单 / B2C退换货通知单 / 退款单）按订单号逐单匹配，"
-        + "再把货款按结算金额分摊到每个 sku，标出「已匹配 / 未匹配」。",
-    needs: "需要连巨益 ADB 取数（环境变量凭据），并决定匹配明细的落盘形态"
-         + "（方案约束：数据库不存对账明细，优先落 results/ 下的 parquet）。",
-  },
-  cost: {
-    title: "成本匹配",
-    does: "给匹配结果补商品主数据（款号 / 品类 / 年份 / 季节 / 品牌 / 吊牌价）与成本单价，"
-        + "按三分处理意见（结转成本 / 冲成本 / 冲发出商品 / 成本不做处理）结转，"
-        + "输出店铺透视、款号透视与两种口径的毛利率。",
-    needs: "依赖 SKU 对账的匹配明细；另需成本单价表（按 sku 或按款号取价）。",
-  },
-  writeback: {
-    title: "数据库回传",
-    does: "把已匹配的巨益单据回写生产库 mid_jedz_datas，标记「已对账」与对账周期，"
-        + "并留成功/失败行数与失败清单。",
-    needs: "会修改生产数据库，必须先决定结果来源（当前无匹配明细）与账期标签口径"
-         + "（bill_period 为中文标签，如 2026年06月-2026年06月）。",
-  },
-  chuanyun: {
-    title: "氚云对接",
-    does: "把对账结果推送氚云，生成资金流水记录。",
-    needs: "账单整理已导出「氚云导入模板」sheet（店铺名称 / 业务类别 / 资金方向 / 金额），"
-         + "当前靠手工导入；自动推送需接氚云开放接口与表单字段映射。",
-  },
-};
-
-function renderPlaceholder(key) {
-  const host = $(`ph-${key}`);
-  if (!host) return;
-  const m = PLACEHOLDER_META[key] || { title: key, does: "", needs: "" };
-  host.innerHTML = `
-    <div class="statusbar warn"><span class="dot"></span><span>暂缓开放 · 当前版本不提供该能力</span></div>
-    <h2>${esc(m.title)}</h2>
-    <p class="hint"><b>这个环节原本做什么：</b>${esc(m.does)}</p>
-    <p class="hint"><b>启用前需要决定：</b>${esc(m.needs)}</p>
-    <details>
-      <summary>现在能做什么</summary>
-      <pre>· 账单整理：各平台账单 → 统一口径（订单编号/资金日期/业务类别/收款/退款）
-            导出 Excel（含氚云导入模板 / 账单透视 / 账单明细）+ parquet
-· 店铺映射：数据库唯一保留的数据，可在「数据源与规则」页导入与查询
-· 平台解析规则：rules/{platform}.json 文件态，可在「数据源与规则」页增删改
-
-数据落位（2026-11-14 方案改版）
-· 数据库      只存店铺映射，不存账单结果，也不存 SKU 对账明细
-· 账单结果    results/{账期}_{平台}_账单整理_{店铺}_{时间戳}/
-· 作业留痕    logs/jobs.jsonl
-· 解析规则    rules/{platform}.json</pre>
-    </details>`;
-}
-
-/* ---------------- 作业 ---------------- */
+/* ---------------- 作业（AI 触发的作业在此展示进度） ---------------- */
 
 let activeJobId = null;
 let pollTimer = null;
-
-async function startJob(params, onDone) {
-  const out = await apiPost(`${BASE}/jobs`, { params });
-  activeJobId = (out.job && (out.job.job_id || out.job.id)) || out.job_id || null;
-  toast("作业已开始", "ok");
-  startPolling(onDone);
-  return activeJobId;
-}
 
 function startPolling(onDone) {
   stopPolling();
@@ -384,7 +269,7 @@ async function pollJob(onDone) {
       if (job) activeJobId = job.job_id || job.id || null;
     }
     if (!job) {
-      if (host) host.innerHTML = `<div class="empty">没有进行中的作业。</div>`;
+      if (host) host.innerHTML = `<div class="empty">没有进行中的作业。在会话里让 AI 触发（账单整理/SKU对账/成本匹配/回传/氚云/透视汇总）。</div>`;
       return;
     }
     const pct = Number(job.progress_pct || job.progress?.pct || 0);
@@ -402,16 +287,13 @@ async function pollJob(onDone) {
     if (TERMINAL.includes(st)) {
       stopPolling();
       const kind = st === "success" ? "ok" : (st === "failed" || st === "timed_out" ? "danger" : "warn");
-      // 只对本页发起的作业弹终态 toast（onDone 由 startJob 传入）；
-      // 启动时 pollJob(null) 捡到的是历史旧作业，不该每次开页都弹一次旧失败
-      // （2026-11-16 实测：开设置页弹出上一次 taobao 失败作业的报错）。
+      // 只对主动跟踪的作业弹终态 toast；启动时 pollJob(null) 捡到历史旧作业不弹
       if (onDone) toast(`${msg || st}`, kind);
       activeJobId = null;
       if (onDone) await onDone(job);
       void loadJobsPage();
     }
   } catch (e) {
-    // 轮询失败不打扰用户，只在详情里体现
     if (host && !host.querySelector(".progress-row")) {
       host.innerHTML = `<div class="empty">读取作业状态失败：${esc(humanize(e.message || e))}</div>`;
     }
@@ -431,8 +313,8 @@ async function loadHome() {
 
   renderMetrics($("home-metrics"), [
     { label: "账单批次", value: (t.bill_batches || 0).toLocaleString("zh-CN"), hint: `合计 ${counts.bill_rows || 0} 行` },
-    { label: "账单行", value: (t.bill_rows || 0).toLocaleString("zh-CN"), tone: "acid", hint: "落 parquet，不入数据库" },
-    { label: "货款行", value: (t.goods_rows || 0).toLocaleString("zh-CN"), hint: "SKU对账的输入（暂缓）" },
+    { label: "账单行", value: (t.bill_rows || 0).toLocaleString("zh-CN"), tone: "acid", hint: "落文件，不入数据库" },
+    { label: "货款行", value: (t.goods_rows || 0).toLocaleString("zh-CN"), hint: "SKU对账的输入" },
     { label: "店铺映射", value: (t.shop_map || 0).toLocaleString("zh-CN"), tone: "ok", hint: "数据库唯一保留的数据" },
     { label: "解析规则", value: (t.rules || 0).toLocaleString("zh-CN"), hint: "rules/*.json 文件态" },
     { label: "作业留痕", value: (counts.job_log || 0).toLocaleString("zh-CN"), hint: "logs/jobs.jsonl" },
@@ -496,92 +378,6 @@ async function loadPlatformsInto(selects) {
   });
 }
 
-async function loadShopsIntoDatalist() {
-  const res = await tool("recon_workbench__shops", { limit: 500 }).catch(() => ({ data: [] }));
-  const dl = $("shop-list");
-  if (!dl) return;
-  dl.innerHTML = rowsOf(res).map((s) => `<option value="${esc(s.shop_code)}">${esc(s.shop_name)}</option>`).join("");
-}
-
-async function loadBillPage() {
-  await Promise.all([
-    loadPlatformsInto([$("bill-platform")]),
-    loadShopsIntoDatalist(),
-  ]);
-  await loadBillBatches();
-  await loadBillRows();
-}
-
-/** 批次产物下载链接组：downloads 副本（宿主 /files/downloads/ 同源可下）优先，
- *  无副本时回落展示本地路径（可复制到资源管理器打开）。 */
-function excelLinks(b) {
-  const dls = Array.isArray(b.downloads) ? b.downloads : [];
-  if (dls.length) {
-    return dls.map((d) => {
-      const label = String(d.name || "Excel").replace(/\.xlsx$/i, "");
-      const short = label.length > 26 ? `${label.slice(0, 24)}…` : label;
-      return `<a class="dl-link" href="${esc(d.url)}" download="${esc(d.name)}" title="${esc(d.name)}">${esc(short)}</a>`;
-    }).join("");
-  }
-  const files = Array.isArray(b.excel_list) && b.excel_list.length ? b.excel_list : (b.excel ? [b.excel] : []);
-  if (!files.length) return `<span class="hint">未导出</span>`;
-  return files.map((p) => `<code class="path" title="${esc(p)}">${esc(String(p).split(/[\\/]/).pop())}</code>`).join("<br>");
-}
-
-async function loadBillBatches() {
-  const res = await tool("recon_workbench__bill_batches", { limit: 30 }).catch((e) => ({ data: {}, error: e.message }));
-  renderTable($("bill-batches"), rowsOf(res).map((b) => ({
-    账期: b.period, 平台: b.platform, 店铺编码: b.shop_code, 店铺名称: b.shop_name,
-    状态: b.status, 账单行: b.detail_rows, 货款行: b.goods_rows,
-    货款收款元: b.goods_receipt_yuan, 货款退款元: b.goods_refund_yuan, 货款净额元: b.goods_net_yuan,
-    Excel文件: b,
-    时间: b.created_at, 批次: b.batch_id,
-  })), {
-    empty: "还没有账单整理批次。填好参数点「开始整理账单」，或先「试跑看映射」。",
-    limit: 30,
-    render: {
-      状态: (v) => statusTag(v),
-      Excel文件: (b) => excelLinks(b || {}),
-    },
-  });
-}
-
-async function loadBillRows() {
-  const batchId = $("bill-rows-batch")?.value.trim() || "";
-  const res = await tool("recon_workbench__query_bill_rows", { batch_id: batchId, limit: 200 })
-    .catch((e) => ({ data: {}, error: e.message }));
-  const meta = (res.data || {}).batch || {};
-  renderTable($("bill-rows"), rowsOf(res).map((r) => ({
-    平台: r.platform, 店铺编码: r.shop_code, 账期: r.period,
-    订单编号: r.order_no, 资金日期: r.fund_date, 业务类别: r.biz_category,
-    收款元: r.receipt_yuan, 退款元: r.refund_yuan, 净额元: r.net_yuan,
-    来源文件: r.source_file,
-  })), {
-    empty: batchId
-      ? "该批次没有账单明细（可能未整理过，或批次ID不对）"
-      : "还没有账单整理结果。结果只落文件，不进数据库。",
-    limit: 200,
-  });
-  const host = $("bill-rows");
-  if (host) {
-    // 复用同一个提示节点：旧版每次查询 insertBefore 一个新 <p>，
-    // 反复查询后提示堆成一摞（2026-11-16 页面优化）。
-    let tip = document.getElementById("bill-rows-tip");
-    if (!tip) {
-      tip = document.createElement("p");
-      tip.id = "bill-rows-tip";
-      tip.className = "hint";
-      host.parentNode.insertBefore(tip, host);
-    }
-    if (meta && meta.batch_id) {
-      tip.textContent = `当前批次 ${meta.batch_id} · ${meta.detail_rows || 0} 行 · 货款净额 ${(meta.goods_net_yuan || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元`;
-      tip.style.display = "";
-    } else {
-      tip.style.display = "none";
-    }
-  }
-}
-
 async function loadSourcesPage() {
   await loadPlatformsInto([$("rule-platform")]);
   await loadDbPanel();
@@ -606,7 +402,7 @@ async function loadDbPanel() {
     <div class="statusbar ${live ? "ok" : ((d.missing_env || []).length ? "warn" : "danger")}">
       <span class="dot"></span><span>${esc(humanize(res.summary || (live ? "已连接" : "未就绪")))}</span>
     </div>
-    <p class="hint">账单整理<b>不需要</b>数据库；巨益 ADB 只在 SKU对账与数据库回传启用后才需要（当前暂缓）。</p>
+    <p class="hint">账单整理<b>不需要</b>数据库；巨益 ADB 只在 SKU对账取数与数据库回传真实落库时需要。</p>
     <p class="hint">数据库账号口令一律读系统环境变量，插件不保存、页面不显示。</p>
     <details>
       <summary>需要配置的环境变量</summary>
@@ -629,7 +425,6 @@ async function loadShops() {
     平台: s.platform, 氚云名称: s.chuanyun_name, 启用: s.active ? "是" : "否",
     版本: s.version, 导入时间: s.imported_at,
   })), { empty: "还没有导入店铺映射。店铺映射是数据库里唯一保留的数据。", limit: 100 });
-  await loadShopsIntoDatalist();
 }
 
 async function loadRules() {
@@ -661,7 +456,7 @@ async function loadJobsPage() {
   });
 }
 
-/* ---------------- 设置页（2026-11-16：自定义存储路径 + 清空历史） ---------------- */
+/* ---------------- 设置页（自定义存储路径 + 清空历史） ---------------- */
 
 async function loadSettingsPage() {
   const res = await tool("recon_workbench__get_settings", {});
@@ -678,8 +473,7 @@ async function loadSettingsPage() {
   if (out) { out.style.display = "none"; out.textContent = ""; }
 }
 
-/** 保存存储路径（2026-11-16 bug 修复：AI 原生化改版误删了编辑入口，补回）。
- *  restore=true 时传空串 = 恢复默认目录；后端校验绝对路径 + 可创建可写。 */
+/** 保存存储路径。restore=true 时传空串 = 恢复默认目录；后端校验绝对路径 + 可创建可写。 */
 async function saveResultsDir(restore) {
   const btn = $(restore ? "btn-reset-settings" : "btn-save-settings");
   const input = $("set-results-dir");
@@ -713,7 +507,8 @@ async function saveResultsDir(restore) {
 }
 
 /** 清空历史：两步确认（WebView iframe 里 window.confirm 可能被拦，改用按钮态）。
- *  第一次点击变红字「确认清空？再点一次执行」，5 秒内再点才真正调用。 */
+ *  第一次点击变红字「确认清空？再点一次执行」，5 秒内再点才真正调用。
+ *  2026-11-18 改版：只清插件内记录（作业留痕+downloads 副本），输出目录文件不删。 */
 let clearArmed = null;
 async function clearHistoryFlow(btn) {
   if (!clearArmed || clearArmed.btn !== btn) {
@@ -726,7 +521,7 @@ async function clearHistoryFlow(btn) {
       timer: setTimeout(() => { resetClearBtn(btn); clearArmed = null; }, 5000),
     };
     clearArmed.original = original;
-    toast("将删除所有批次结果与作业留痕（保留店铺映射/规则/设置），5 秒内再点一次确认", "warn");
+    toast("只清插件内记录（作业留痕/下载副本），输出目录文件全部保留；5 秒内再点一次确认", "warn");
     return;
   }
   clearTimeout(clearArmed.timer);
@@ -735,7 +530,7 @@ async function clearHistoryFlow(btn) {
   btn.disabled = true;
   try {
     const res = await tool("recon_workbench__clear_history", { confirm: "yes" });
-    toast(res.summary || "已清空历史", "ok");
+    toast(res.summary || "已清空记录", "ok");
     const out = $("clear-history-result");
     if (out) {
       const d = res.data || {};
@@ -744,10 +539,9 @@ async function clearHistoryFlow(btn) {
       out.innerHTML = `<p class="hint">${esc(res.summary || "")}</p>` +
         ((d.errors || []).length ? `<p class="hint">删除失败项：${esc(d.errors.join("；"))}</p>` : "");
     }
-    // 刷新受影响页面数据（总览页按钮就地刷新本页；批次表/明细同步重取）
+    // 清的是留痕与下载副本：刷新总览与作业页；批次清单来自输出目录（文件保留，仍可见）
     await loadHome().catch(() => {});
-    await loadBillBatches().catch(() => {});
-    await loadBillRows().catch(() => {});
+    await loadJobsPage().catch(() => {});
   } finally {
     btn.disabled = false;
   }
@@ -757,137 +551,8 @@ function resetClearBtn(btn) {
   btn.classList.remove("armed");
 }
 
-/** 占位页：只渲染占位卡，不发任何取数请求（没有对应数据）。 */
-function placeholderLoader(key) {
-  return () => { renderPlaceholder(key); };
-}
-
-/* ---------------- SKU对账 / 成本匹配（2026-11-18 启用，真实表单） ---------------- */
-
-/** 页内作业轮询：与 pollJob 同口径，但渲染到本页 host（不占用作业页）。 */
-async function watchPageJob(jobId, hostId, onDone) {
-  const host = $(hostId);
-  const tick = async () => {
-    try {
-      const out = await apiGet(`${BASE}/jobs/${jobId}`);
-      const job = out.job || out;
-      const pct = Number(job.progress_pct || job.progress?.pct || 0);
-      const msg = humanize(job.message || job.progress?.label || "");
-      const st = String(job.status || "").toLowerCase();
-      if (host) {
-        host.style.display = "";
-        host.innerHTML = `
-          <div class="progress-row">
-            <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100, Math.max(0, pct))}%"></div></div>
-            <div class="progress-label">${statusTag(job.status)} ${esc(msg)} · ${pct}%</div>
-          </div>`;
-      }
-      if (TERMINAL.includes(st)) {
-        clearInterval(timer);
-        const kind = st === "success" ? "ok" : (st === "failed" || st === "timed_out" ? "danger" : "warn");
-        toast(msg || st, kind);
-        const data = (job.result && job.result.data) || job.data || {};
-        const files = data.exported_files || (data.exported ? [data.exported] : []);
-        if (host && files.length) {
-          host.innerHTML += `<p class="hint">产物：${files.map((p) => `<code class="path">${esc(String(p).split(/[\\/]/).pop())}</code>`).join("、")}</p>`
-            + ((data.migrated || []).length ? `<p class="hint">已迁移 ${data.migrated.length} 批 → 已匹配成本/</p>` : "")
-            + ((data.failed_batches || []).length ? `<p class="hint">留守批次：${esc(JSON.stringify(data.failed_batches))}</p>` : "");
-        }
-        if (onDone) await onDone(job);
-        void loadJobsPage();
-      }
-    } catch (e) {
-      if (host) host.innerHTML = `<div class="empty">读取作业状态失败：${esc(humanize(e.message || e))}</div>`;
-    }
-  };
-  const timer = setInterval(() => void tick(), 1500);
-  await tick();
-}
-
-async function loadSkuBatchRows(period, state) {
-  const res = await tool("recon_workbench__sku_batches", { period, state: state || "" })
-    .catch((e) => ({ data: {}, error: e.message }));
-  return rowsOf(res);
-}
-
-function skuBatchTableRows(rows) {
-  return rows.map((b) => ({
-    批次: b.name, 状态目录: b.state, 平台: b.platform,
-    店铺: b.shop_name || b.shop_code || "-", 单元: (b.units || []).join("、"),
-    终态: b.status || "-", Excel文件: b,
-  }));
-}
-
-async function loadMatchPage() {
-  await loadPlatformsInto([$("match-platform")]).catch(() => {});
-  const period = ($("match-period")?.value || "").trim();
-  const rows = period ? await loadSkuBatchRows(period, "未匹配成本") : [];
-  renderTable($("match-batches"), skuBatchTableRows(rows), {
-    empty: period ? "该账期还没有 SKU 对账批次" : "填写账期后点「刷新」查看批次",
-    render: { Excel文件: (b) => excelLinks({ excel: b.excel, downloads: [] }) },
-  });
-}
-
-async function loadCostPage() {
-  const period = ($("cost-period")?.value || "").trim();
-  const rows = period ? await loadSkuBatchRows(period, "") : [];
-  renderTable($("cost-batches"), skuBatchTableRows(rows), {
-    empty: period ? "该账期还没有 SKU 对账批次（先做 SKU 对账）" : "填写账期后点「刷新批次」",
-    render: { Excel文件: (b) => excelLinks({ excel: b.excel, downloads: [] }) },
-  });
-  // 批次下拉（全部批次 + 逐批）
-  const sel = $("cost-batch");
-  if (sel) {
-    const cur = sel.value;
-    sel.innerHTML = `<option value="">全部批次</option>`
-      + rows.map((b) => `<option value="${esc(b.name)}">${esc(b.name)}（${esc(b.state)}）</option>`).join("");
-    if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
-  }
-}
-
-async function runMatchFlow() {
-  const period = ($("match-period")?.value || "").trim();
-  const platform = $("match-platform")?.value || "";
-  const shop = ($("match-shop")?.value || "").trim();
-  const batch = ($("match-batch")?.value || "").trim();
-  if (!batch && !(period && platform)) {
-    toast("请填写 账期+平台，或账单批次 ID", "warn"); return;
-  }
-  const btn = $("btn-run-match");
-  btn.disabled = true;
-  try {
-    const jobId = await startJob({
-      stage: "match", period, platform, shop_code: shop, bill_batch_id: batch,
-    }, null);
-    stopPolling();   // 页内轮询接管，避免与作业页轮询双写
-    if (jobId) await watchPageJob(jobId, "match-job-progress", () => loadMatchPage());
-  } finally { btn.disabled = false; }
-}
-
-async function runCostFlow() {
-  const period = ($("cost-period")?.value || "").trim();
-  if (!period) { toast("成本匹配必须填账期（YYYY-MM）", "warn"); return; }
-  const btn = $("btn-run-cost");
-  btn.disabled = true;
-  try {
-    const jobId = await startJob({
-      stage: "cost", period,
-      cost_file: ($("cost-file")?.value || "").trim(),
-      bill_batch_id: $("cost-batch")?.value || "",
-      include_tax: $("cost-tax")?.value || "0",
-    }, null);
-    stopPolling();
-    if (jobId) await watchPageJob(jobId, "cost-job-progress", () => loadCostPage());
-  } finally { btn.disabled = false; }
-}
-
 const PAGE_LOADERS = {
   home: loadHome,
-  bill: loadBillPage,
-  match: loadMatchPage,
-  cost: loadCostPage,
-  writeback: placeholderLoader("writeback"),
-  chuanyun: placeholderLoader("chuanyun"),
   sources: loadSourcesPage,
   jobs: loadJobsPage,
   settings: loadSettingsPage,
@@ -917,28 +582,15 @@ function bindAll() {
     });
   });
 
-  // 占位卡启动即渲染，避免用户先看到空白再被填上（match/cost 已启用真实表单）
-  ["writeback", "chuanyun"].forEach(renderPlaceholder);
-  // SKU对账 / 成本匹配（2026-11-18 cost-match spec C5）
-  bind("btn-run-match", runMatchFlow);
-  bind("btn-run-cost", runCostFlow);
-  bind("btn-match-refresh", loadMatchPage);
-  bind("btn-cost-refresh", loadCostPage);
-  $("match-period")?.addEventListener("change", () => void loadMatchPage());
-  $("cost-period")?.addEventListener("change", () => void loadCostPage());
-
-  // 【2026-11-16 AI 原生化】人工操作入口（整理表单/试跑/导入店铺表/规则编辑/
-  // 设置保存）已移除；对应能力由 AI 通过 MCP 工具执行：
-  //   start_recon / preview_bill / load_shop_file / upsert_rule / delete_rule /
-  //   save_settings / clear_history(confirm=yes，AI 须先向用户确认)
-  // 例外（2026-11-16 用户需求）：对账总览页保留「清空历史」人工按钮，
-  // 两步确认（clearHistoryFlow）后调 clear_history(confirm=yes)。
+  // 【2026-11-18 UI 精简】五个能力页已移除：账单整理/SKU对账/成本匹配/回传/氚云
+  // 全部由 AI 通过 MCP 工具执行（start_recon/sku_match/cost_match/writeback/
+  // chuanyun_sync/bill_pivot_summary/sku_pivot_summary），作业进度在「作业与日志」页看。
+  // 例外：对账总览页保留「清空历史」人工按钮（两步确认后调 clear_history(confirm=yes)，
+  // 只清插件内记录，不删输出目录文件）。
   const clearBtn = $("btn-clear-history");
   if (clearBtn) clearBtn.addEventListener("click", () => clearHistoryFlow(clearBtn));
-  // 设置页存储路径编辑（2026-11-16 bug 修复：改版误删入口后补回）
   bind("btn-save-settings", () => saveResultsDir(false));
   bind("btn-reset-settings", () => saveResultsDir(true));
-  bind("btn-batch-refresh", () => loadBillBatches());
   bind("btn-shop-refresh", () => loadShops());
   bind("btn-rule-refresh", () => loadRules());
   bind("btn-job-refresh", () => loadJobsPage());
@@ -955,7 +607,7 @@ function bindAll() {
     const conn = $("db-conn");
     if (conn) {
       const live = !!(res.data && res.data.ok);
-      // 改版后账单整理不依赖数据库，未连通只作提示不作警告
+      // 账单整理不依赖数据库，未连通只作提示不作警告
       conn.className = `conn ${live ? "ok" : "warn"}`;
       conn.textContent = live ? "数据库已连接" : "数据库未配置（账单整理不受影响）";
     }

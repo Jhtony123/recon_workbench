@@ -1,20 +1,17 @@
-"""对账编排器（2026-11-14 方案改版后：只有「账单整理」在运行）。
+"""对账编排器（2026-11-18：五阶段全启用，仅 full 一键全链路仍占位）。
 
-【方案改版】用户决策：
+【方案约束】（2026-11-14 改版，沿用至今）：
   1) 数据库不存 SKU 对账明细结果，也不存账单整理结果，只存店铺映射；
-  2) 插件只做影刀现有能力 —— 账单整理（可用）+ SKU对账 / 成本匹配 / 数据库回传 / 氚云对接（占位暂缓）。
+  2) 五阶段 bill/match/cost/writeback/chuanyun 全部真实实现（文件态落 artifacts）；
+     writeback/chuanyun 缺省 dry-run 预检，真实写外部系统须显式 dry_run=0 且经用户确认。
 
-因此本文件只保留 stage=bill 的真实实现，其余 stage 一律返回**可读的占位终态**
-（status="deferred"），不静默成功、也不抛栈。四个占位功能的完整算法没有删除，
-整体封存在 core/pipeline_dormant.py（含 matching/allocation/cost/pivots/writeback/db 接线），
-日后重新启用时：
-  · 从 pipeline_dormant 取回 run_match / run_writeback / run_full 三段；
-  · 在 storage.ALLOWED_TABLES 显式加表名，或改为落 artifacts 文件；
-  · config.json 里恢复对应 mcp_tools，UI 去掉占位卡。
-那批代码是三层回归全绿（账单 30/30、匹配 8/8、成本 5/5、分摊差异恒 0 分）的成果，不必重写。
+stage=full（一键全链路）仍返回**可读的占位终态**（status="deferred"），
+不静默成功、也不抛栈——跨阶段串联涉及真实写库确认门，须逐阶段人工触发。
+改版前的库表版编排封存在 core/pipeline_dormant.py（仅历史口径参考，不在运行路径上；
+其依赖的退役库表被 storage.ALLOWED_TABLES 白名单拦下，属有意设计）。
 
-账单整理产物去向（core/artifacts.py，2026-11-16 底稿分离）：
-  results/{账期}_{平台}_账单整理_{店铺}_{时间戳}/
+账单整理产物去向（core/artifacts.py，2026-11-16 年月层布局）：
+  results/{YYYY-MM}/账单整理/{批次名}/
     ├── *_账单整理.xlsx         财务交付件（只有这些留在批次根目录）
     └── 底稿/                   过程底稿（用户不需要直接看）
         ├── manifest.json       批次元信息（行数、货款合计、产物路径）
@@ -43,21 +40,19 @@ from .platforms.registry import parse_platform
 
 ProgressFn = Callable[[int, str], None]
 
-#: 真正可运行的阶段（2026-11-18 cost-match-stage spec：cost 启用，SKU 对账下游）
-ACTIVE_STAGES = ("bill", "match", "cost")
+#: 真正可运行的阶段（2026-11-18：writeback/chuanyun 启用，缺省 dry-run 预检不写外部系统）
+ACTIVE_STAGES = ("bill", "match", "cost", "writeback", "chuanyun")
 
-#: 占位暂缓的阶段（含 UI 导航里的能力）
+#: 占位暂缓的阶段（2026-11-18 起仅剩 full；五能力均已 active）
 DEFERRED_STAGES = {
-    "writeback": "数据库回传",
-    "chuanyun": "氚云对接",
-    "full": "全链路（账单+匹配+回传）",
+    "full": "全链路（账单+匹配+成本+回传+氚云）",
 }
 
-#: 占位说明：为什么暂缓、启用条件、代码在哪
+#: 占位说明：为什么暂缓、如何执行
 DEFERRED_NOTE = (
-    "该能力按 2026-11-14 方案改版暂缓开放。完整实现保留在 core/pipeline_dormant.py"
-    "（匹配/分摊/成本/透视/回传），重新启用时需先决定结果落盘形态"
-    "（数据库只存店铺映射，不再存对账明细）。"
+    "一键全链路暂不开放：数据库回传与氚云推送属真实写外部系统动作，"
+    "须显式 dry_run=0 且经用户确认，不能随全链路静默执行。"
+    "请按阶段依次触发 start_recon(stage=bill/match/cost/writeback/chuanyun)。"
 )
 
 
@@ -119,19 +114,26 @@ def capability_status() -> list[dict[str, Any]]:
                     "重算透视毛利（收入/1.13−发货成本）。2026-11-18 启用；"
                     "成功后批次迁移 未匹配成本→已匹配成本。",
         },
+        {
+            "key": "writeback",
+            "name": "数据库回传",
+            "status": "active",
+            "stage": "writeback",
+            "note": "按 OMS 单据 id 回写 ADB mid_jedz_datas 标记「已对账」与中文账期。"
+                    "2026-11-18 启用；缺省 dry-run 预检（不连库不写库），"
+                    "真实落库须显式 dry_run=0 且经用户确认；成功后批次迁移 已回传数据库/。",
+        },
+        {
+            "key": "chuanyun",
+            "name": "氚云对接",
+            "status": "active",
+            "stage": "chuanyun",
+            "note": "账单整理「氚云导入模板」sheet 经五张主数据表映射组装「店铺资金账单」"
+                    "主表+子表，CreateBizObject 推送。2026-11-18 启用；缺省 dry-run 预检"
+                    "（零 HTTP 调用，payload 预览落 底稿/chuanyun_preview/），"
+                    "真实推送须显式 dry_run=0 且经用户确认；成功文件移入 氚云导入成功/。",
+        },
     ]
-    notes = {
-        "writeback": "已匹配单据回写 ADB 标记「已对账」与对账周期。算法已封存待启用。",
-        "chuanyun": "对账结果推送氚云。氚云导入模板 sheet 已随账单整理导出，推送通道未接。",
-    }
-    for key in ("writeback", "chuanyun"):
-        out.append({
-            "key": key,
-            "name": DEFERRED_STAGES.get(key, key),
-            "status": "deferred",
-            "stage": key,
-            "note": notes[key],
-        })
     return out
 
 
@@ -688,7 +690,8 @@ def _bill_pivot(bill_df: pd.DataFrame, ctx: ParseContext) -> pd.DataFrame:
 def _bill_chuanyun(bill_df: pd.DataFrame, ctx: ParseContext) -> pd.DataFrame:
     """氚云导入模板（账单层）：店铺名称/业务类别/资金方向/金额。
 
-    注意：这里只产出**模板 sheet**（财务手工导入氚云用），氚云推送通道本身属占位暂缓能力。
+    注意：这里只产出**模板 sheet**；OpenAPI 推送由 stage=chuanyun（run_chuanyun）承接，
+    缺省 dry-run 预检，真实推送须显式 dry_run=0 且经用户确认。
     """
     if bill_df.empty:
         return pd.DataFrame(columns=list(pivots.CHUANYUN_COLUMNS))
@@ -1409,54 +1412,376 @@ def run_cost(
     )
 
 
-def run_writeback(*_args: Any, **_kwargs: Any) -> StageResult:
-    """数据库回传 —— 占位暂缓。实现在 core/pipeline_dormant.run_writeback。"""
-    return deferred_result("writeback")
+def run_writeback(
+    *,
+    period: str = "",
+    bill_batch_id: str = "",
+    platform: str = "",
+    shop_code: str = "",
+    s_date: str = "",
+    e_date: str = "",
+    dry_run: bool = True,
+    progress: ProgressFn = _noop_progress,
+) -> StageResult:
+    """阶段 4：结果回传数据库（2026-11-18 启用，承接影刀 look_sku.update_sql）。
 
+    输入 = sku匹配/{未匹配成本|已匹配成本}/{批次} 底稿里的 oms_matched 表
+    （「已匹配的巨益单号」：id/账单周期/数量；match 阶段已按
+    「已匹配 & 历史未对账」双条件过滤，B2B/AKC 为空表不回传）。
+    按 OMS 单据 id 执行 UPDATE mid_jedz_datas SET bill_state='已对账',
+    bill_period=中文账期标签 WHERE id=%s（与影刀同口径）。
 
-def run_chuanyun(*_args: Any, **_kwargs: Any) -> StageResult:
-    """氚云对接 —— 占位暂缓（账单整理已导出氚云导入模板 sheet）。"""
-    return deferred_result("chuanyun")
-
-
-def run_full(params: dict[str, Any], progress: ProgressFn = _noop_progress) -> dict[str, Any]:
-    """全链路 —— 占位暂缓。
-
-    只跑账单整理这一段真实可用的，其余段以 deferred 列出，让调用方一眼看到边界，
-    而不是拿到一个「全链路成功」的假终态。
+    **dry_run 缺省 True**（2026-11-18 用户决策：当前只做代码功能，
+    不真实更新数据库）：只统计 + SQL 预览，不连库、不迁移批次。
+    dry_run=False 真实落库后，批次全部单元成功才迁移 已回传数据库/
+    （影刀「成功移动到 执行成功/」的文件态等价；失败留守）。
     """
-    prog = progress or _noop_progress
-    bill_stage = str(params.get("stage") or "bill").strip().lower()
-    if bill_stage != "full":
-        return deferred_result(bill_stage).__dict__ | {"ok": False}
+    from . import writeback as wb
 
-    prog(5, "全链路：账单整理可执行，匹配/成本/回传暂缓")
-    res = run_bill(
-        platform=str(params.get("platform") or ""),
-        shop_code=str(params.get("shop_code") or ""),
-        shop_name=str(params.get("shop_name") or ""),
-        period=str(params.get("period") or ""),
-        s_date=str(params.get("s_date") or ""),
-        e_date=str(params.get("e_date") or ""),
-        file_paths=_as_list(params.get("file_paths")),
-        extra_files=_as_file_map(params.get("extra_files")),
-        batch_id=str(params.get("batch_id") or ""),
-        export=str(params.get("export", "1")) not in ("0", "false", "False"),
-        progress=prog,
+    t0 = time.time()
+    period = str(period or "").strip()
+    if not period:
+        raise ReconError("数据库回传必须指定账期 period（YYYY-MM）")
+    batch_id = repo.new_batch_id("wb")
+    plat = parse_platform(platform) if platform else ""
+    mode = "预检（dry-run，不写数据库）" if dry_run else "真实回传"
+    progress(5, f"数据库回传 {period} · {mode}")
+
+    batches = artifacts.list_sku_batches(
+        period, states=(artifacts.SKU_STATE_PENDING_COST, artifacts.SKU_STATE_COSTED),
+        platform=plat, shop_code=shop_code)
+    if bill_batch_id:
+        target = str(bill_batch_id).strip()
+        batches = [b for b in batches
+                   if target in (b.batch_id, b.dir.name)
+                   or any(str((u.get("manifest") or {}).get("batch_id") or "") == target
+                          for u in artifacts.sku_batch_units(b.dir))]
+    if not batches:
+        raise DataSourceEmpty(
+            "没有可回传的 SKU 对账批次，请先执行「SKU对账」",
+            detail={"period": period, "platform": plat, "shop_code": shop_code,
+                    "bill_batch_id": bill_batch_id},
+        )
+
+    unit_reports: list[dict] = []
+    failed_batches: list[dict] = []
+    skipped_batches: list[dict] = []
+    migrated: list[str] = []
+    previews: list[str] = []
+    total = ok_n = failed_n = 0
+    n = len(batches)
+
+    for i, b in enumerate(batches):
+        def prog(pct, msg, _i=i):
+            progress(int((_i * 100 + pct) / n), f"[批次 {_i + 1}/{n} {b.dir.name}] {msg}")
+
+        units = artifacts.sku_batch_units(b.dir)
+        if not units:
+            skipped_batches.append({"batch": b.dir.name,
+                                    "reason": "无 match 底稿（SKU对账 skipped 的空批次）"})
+            continue
+        unit_results: list[dict] = []
+        unit_errors: list[dict] = []
+        batch_rows = 0
+        for u in units:
+            drafts = Path(u["drafts_dir"])
+            oms = artifacts._read_table(  # noqa: SLF001 - 同包内部使用
+                artifacts.resolve_table_path(drafts, artifacts.MATCH_WRITEBACK_STEM))
+            rows = wb.prepare_rows(oms, period=period)
+            label = u.get("label") or "(整批)"
+            if not rows:
+                unit_results.append({"batch": b.dir.name, "unit": label,
+                                     "status": "skipped", "total": 0,
+                                     "message": "回传表为空（B2B/无已匹配未对账单据），不回传"})
+                continue
+            try:
+                res = wb.writeback(rows, period=period, s_date=s_date, e_date=e_date,
+                                   dry_run=dry_run, progress=prog)
+            except ReconError as exc:
+                unit_errors.append({"unit": label, "error": exc.message})
+                continue
+            batch_rows += res.total
+            total += res.total
+            ok_n += res.ok
+            failed_n += res.failed
+            previews.extend(res.sql_preview[:2])
+            unit_results.append({
+                "batch": b.dir.name, "unit": label, "status": res.status,
+                "total": res.total, "ok": res.ok, "failed": res.failed,
+                "bill_period_label": res.bill_period_label,
+                "failed_detail": res.failed_detail[:50],
+                "message": res.message,
+            })
+            if res.status == "failed":
+                unit_errors.append({"unit": label, "error": res.message})
+        if unit_errors:
+            failed_batches.append({"batch": b.dir.name, "units_failed": unit_errors})
+            unit_reports.extend(unit_results)
+            continue
+        # 真实回传且全部单元成功 → 迁移 已回传数据库/（dry-run 不迁移）
+        if not dry_run and batch_rows > 0 and b.dir.parent.name != artifacts.SKU_STATE_WRITTEN_BACK:
+            try:
+                dst = artifacts.migrate_sku_batch(
+                    b.dir, from_state=b.dir.parent.name,
+                    to_state=artifacts.SKU_STATE_WRITTEN_BACK)
+                migrated.append(str(dst))
+            except OSError as exc:
+                failed_batches.append({"batch": b.dir.name,
+                                       "reason": f"回传成功但迁移失败：{exc}"})
+                unit_reports.extend(unit_results)
+                continue
+        unit_reports.extend(unit_results)
+
+    duration = time.time() - t0
+    real_units = [r for r in unit_reports if r.get("total")]
+    if not real_units:
+        status = "skipped" if not failed_batches else "failed"
+        msg = (f"没有需要回传的已匹配单据（{len(skipped_batches)} 个空批次跳过）"
+               if not failed_batches else "回传失败：" + "；".join(
+                   f["batch"] for f in failed_batches)[:300])
+    elif failed_batches or failed_n:
+        status = "partial" if ok_n else "failed"
+        msg = (f"回传部分成功：{ok_n} 条成功 / {failed_n} 条失败，"
+               f"{len(failed_batches)} 批次留守（{mode}）")
+    else:
+        status = "success"
+        msg = (f"{'预检通过' if dry_run else '回传完成'}：{len(real_units)} 单元 / "
+               f"{total} 条待标记「已对账」"
+               + (f"；迁移 {len(migrated)} 批 → 已回传数据库/" if migrated else "")
+               + ("（dry-run，未连接/未写入数据库）" if dry_run else ""))
+
+    joblog.save_job_log(
+        batch_id, stage="writeback", status=status, platform=plat or "all",
+        shop_code=shop_code, period=period, matched_rows=ok_n,
+        unmatched_rows=failed_n, message=msg, duration_sec=duration,
     )
-    deferred = [DEFERRED_STAGES[k] for k in ("writeback", "chuanyun")]
-    data = dict(res.data or {})
-    data["deferred_stages"] = deferred
-    data["note"] = DEFERRED_NOTE
-    return {
-        "ok": res.status != "failed",
-        "status": res.status,
-        "message": f"{res.message}；后续 {len(deferred)} 个环节暂缓开放（{'、'.join(deferred)}）",
-        "row_count": int(data.get("bill_rows") or 0),
-        "stage": "full",
-        "batch_id": res.batch_id,
-        "data": data,
-    }
+    progress(100, msg)
+    return StageResult(
+        stage="writeback", status=status, batch_id=batch_id, message=msg,
+        data={
+            "period": period, "dry_run": bool(dry_run),
+            "total": total, "ok": ok_n, "failed": failed_n,
+            "batches": len(batches), "units": len(real_units),
+            "unit_reports": unit_reports,
+            "failed_batches": failed_batches, "skipped_batches": skipped_batches,
+            "migrated": migrated,
+            "sql_preview": previews[:10],
+            "sql_template": wb.WRITEBACK_SQL,
+            "stored_in_db": (not dry_run) and ok_n > 0,
+            "duration_sec": round(duration, 2),
+        },
+    )
+
+
+def run_chuanyun(
+    *,
+    period: str = "",
+    bill_batch_id: str = "",
+    platform: str = "",
+    shop_code: str = "",
+    dry_run: bool = True,
+    progress: ProgressFn = _noop_progress,
+) -> StageResult:
+    """阶段 5：氚云对接（2026-11-18 启用，承接影刀 api_chuanyun.file_arrange）。
+
+    输入 = 账单整理批次交付 Excel 的「氚云导入模板」sheet
+    （店铺名称/业务类别/资金方向/金额，元；各平台 export_books 已统一导出）。
+    经五张氚云主数据表映射组装「店铺资金账单」主表+子表 → CreateBizObject 推送。
+
+    **dry_run 缺省 True**（2026-11-18 用户决策：只做代码功能，测试不向氚云传数据）：
+    零 HTTP 调用（主数据只读查询也不发），只做模板校验 + 金额合计 +
+    payload 骨架预览落盘（底稿/chuanyun_preview/）；主数据用本地快照，
+    无快照时 ObjectId 留空并 warnings 明示。
+    dry_run=False：真实取主数据（自动留快照）→ 逐文件推送（5s 限流）→
+    成功文件移入批次内 氚云导入成功/（影刀同口径）并更新 manifest；失败留守。
+    """
+    import json as _json
+    import shutil as _shutil
+    import time as _time
+
+    from . import chuanyun as cy
+    from .errors import ChuanyunError
+
+    t0 = time.time()
+    period = str(period or "").strip()
+    if not period:
+        raise ReconError("氚云对接必须指定账期 period（YYYY-MM）")
+    batch_id = repo.new_batch_id("cy")
+    plat = parse_platform(platform) if platform else ""
+    mode = "预检（dry-run，不向氚云发送任何请求）" if dry_run else "真实推送"
+    progress(5, f"氚云对接 {period} · {mode}")
+
+    batches = artifacts.list_batches(period=period, platform=plat, shop_code=shop_code, limit=500)
+    if bill_batch_id:
+        target = str(bill_batch_id).strip()
+        batches = [b for b in batches if target in (b.batch_id, b.dir.name)]
+    if not batches:
+        raise DataSourceEmpty(
+            "没有可推送的账单整理批次，请先执行「账单整理」",
+            detail={"period": period, "platform": plat, "shop_code": shop_code,
+                    "bill_batch_id": bill_batch_id},
+        )
+
+    # 主数据：dry-run 用本地快照（可能 None）；真实路径取数并留快照
+    master: dict | None = None
+    if dry_run:
+        master = cy.load_master_snapshot()
+    else:
+        try:
+            master = cy.fetch_master_data()
+            cy.save_master_snapshot(master)
+        except ReconError:
+            raise
+        except Exception as exc:
+            raise ChuanyunError(f"氚云主数据取数失败：{type(exc).__name__}: {str(exc)[:200]}") from exc
+
+    file_reports: list[dict] = []
+    previews: list[str] = []
+    total_files = ok_n = failed_n = skipped_n = 0
+    n = len(batches)
+
+    for i, b in enumerate(batches):
+        def prog(pct, msg, _i=i):
+            progress(int((_i * 100 + pct) / n), f"[批次 {_i + 1}/{n} {b.dir.name}] {msg}")
+
+        excels = artifacts._json_list(b.files.get("excel_list")) or (
+            [b.files["excel"]] if b.files.get("excel") else [])
+        if not excels:
+            skipped_n += 1
+            file_reports.append({"batch": b.dir.name, "file": "", "status": "skipped",
+                                 "reason": "批次无交付 Excel"})
+            continue
+        manifest_changed = False
+        for fp in excels:
+            p = Path(fp)
+            total_files += 1
+            fname = p.name
+            tpl = cy.load_template(p)
+            if tpl.empty:
+                skipped_n += 1
+                file_reports.append({"batch": b.dir.name, "file": fname, "status": "skipped",
+                                     "reason": "无「氚云导入模板」sheet 或模板为空"})
+                continue
+            try:
+                balance = 0.0
+                if not dry_run and master is not None:
+                    # 修复原脚本时序 bug：先匹配账户，再查该账户余额
+                    shop_dept = str(tpl["店铺名称"].iloc[0]).strip()
+                    acct = cy._match_money_account(master.get("money_acct"), shop_dept, fname)
+                    if acct:
+                        balance = cy.fetch_account_balance(acct["obj"])
+                params, warnings, stats = cy.build_payload(
+                    tpl, master, period=period, file_name=fname, account_balance=balance)
+            except ReconError as exc:
+                failed_n += 1
+                file_reports.append({"batch": b.dir.name, "file": fname, "status": "failed",
+                                     "reason": exc.message})
+                continue
+            except Exception as exc:
+                failed_n += 1
+                file_reports.append({"batch": b.dir.name, "file": fname, "status": "failed",
+                                     "reason": f"{type(exc).__name__}: {str(exc)[:160]}"})
+                continue
+            if params is None:
+                skipped_n += 1
+                file_reports.append({"batch": b.dir.name, "file": fname, "status": "skipped",
+                                     "reason": "；".join(warnings)[:300], "stats": stats})
+                if dry_run:
+                    pv = cy.save_preview(b.dir, fname, None, warnings, stats)
+                    previews.append(str(pv))
+                continue
+
+            if dry_run:
+                pv = cy.save_preview(b.dir, fname, params, warnings, stats)
+                previews.append(str(pv))
+                ok_n += 1
+                file_reports.append({"batch": b.dir.name, "file": fname, "status": "success",
+                                     "preview": str(pv), "warnings": warnings, "stats": stats})
+                prog(int((total_files) * 100 / max(total_files, 1)), f"预检 {fname}")
+                continue
+
+            # 真实推送（5s 限流，原脚本口径）
+            _time.sleep(cy.PUSH_INTERVAL_SEC)
+            try:
+                resp = cy.push_biz_object(params)
+            except ReconError as exc:
+                failed_n += 1
+                file_reports.append({"batch": b.dir.name, "file": fname, "status": "failed",
+                                     "reason": exc.message})
+                continue
+            # 成功 → 移入批次内 氚云导入成功/（影刀同口径），更新 manifest
+            try:
+                succ_dir = b.dir / cy.SUCCESS_DIRNAME
+                succ_dir.mkdir(parents=True, exist_ok=True)
+                dst = succ_dir / fname
+                if dst.exists():
+                    dst.unlink()
+                _shutil.move(str(p), str(dst))
+                new_list = [str(dst) if str(x) == str(p) else str(x) for x in excels]
+                b.files["excel_list"] = _json.dumps(new_list, ensure_ascii=False)
+                if str(b.files.get("excel") or "") == str(p):
+                    b.files["excel"] = str(dst)
+                excels = new_list
+                manifest_changed = True
+            except OSError as exc:
+                file_reports.append({"batch": b.dir.name, "file": fname, "status": "success",
+                                     "reason": f"推送成功但移动文件失败：{exc}",
+                                     "response": str(resp)[:200]})
+                ok_n += 1
+                continue
+            ok_n += 1
+            file_reports.append({"batch": b.dir.name, "file": fname, "status": "success",
+                                 "moved_to": str(dst), "response": str(resp)[:200],
+                                 "stats": stats})
+        if manifest_changed:
+            try:
+                artifacts.write_manifest(b)
+            except Exception:
+                pass
+
+    duration = time.time() - t0
+    if total_files == 0:
+        status, msg = "skipped", f"没有可推送的模板文件（{skipped_n} 个批次跳过）"
+    elif failed_n and ok_n:
+        status = "partial"
+        msg = f"氚云{'预检' if dry_run else '推送'}部分成功：{ok_n} 成功 / {failed_n} 失败 / {skipped_n} 跳过（{mode}）"
+    elif failed_n:
+        status = "failed"
+        msg = f"氚云{'预检' if dry_run else '推送'}全部失败（{failed_n} 个文件），请检查凭据与网络"
+    elif ok_n == 0:
+        status = "skipped"
+        msg = f"没有通过校验的模板文件（{skipped_n} 个跳过，详见 file_reports）"
+    else:
+        status = "success"
+        msg = (f"氚云{'预检通过' if dry_run else '推送完成'}：{ok_n} 个文件 / {len(batches)} 批次"
+               + (f" / {skipped_n} 跳过" if skipped_n else "")
+               + ("（dry-run，未向氚云发送任何请求；payload 预览已落 底稿/chuanyun_preview/）"
+                  if dry_run else f"；成功文件已移入 {cy.SUCCESS_DIRNAME}/"))
+
+    joblog.save_job_log(
+        batch_id, stage="chuanyun", status=status, platform=plat or "all",
+        shop_code=shop_code, period=period, matched_rows=ok_n,
+        unmatched_rows=failed_n, message=msg, duration_sec=duration,
+    )
+    progress(100, msg)
+    return StageResult(
+        stage="chuanyun", status=status, batch_id=batch_id, message=msg,
+        data={
+            "period": period, "dry_run": bool(dry_run),
+            "total_files": total_files, "ok": ok_n, "failed": failed_n, "skipped": skipped_n,
+            "batches": len(batches), "file_reports": file_reports,
+            "previews": previews[:20],
+            "master_snapshot": str(cy.master_snapshot_path()) if cy.master_snapshot_path().is_file() else "",
+            "master_loaded": master is not None,
+            "pushed_to_h3": (not dry_run) and ok_n > 0,
+            "duration_sec": round(duration, 2),
+        },
+    )
+
+
+# 注：run_full 已于 2026-11-18 总体 review 移除（死代码：run.py/actions 对 stage=full
+# 一律走 deferred_result 占位门，从不路由到此；旧实现还会误报 writeback/chuanyun 暂缓）。
+# 一键全链路的占位语义由 DEFERRED_STAGES / deferred_result 统一承担。
 
 
 # ------------------------------------------------------------------ 参数解析
@@ -1521,7 +1846,6 @@ __all__ = [
     "run_bill",
     "run_chuanyun",
     "run_cost",
-    "run_full",
     "run_match",
     "run_writeback",
     "artifacts",

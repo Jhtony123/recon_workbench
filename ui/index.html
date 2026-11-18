@@ -14,11 +14,6 @@
   </div>
   <nav class="nav" id="nav">
     <a href="#/home" data-page="home">对账总览</a>
-    <a href="#/bill" data-page="bill">账单整理</a>
-    <a href="#/match" data-page="match">SKU对账</a>
-    <a href="#/cost" data-page="cost">成本匹配</a>
-    <a href="#/writeback" data-page="writeback">数据库回传</a>
-    <a href="#/chuanyun" data-page="chuanyun">氚云对接</a>
     <a href="#/sources" data-page="sources">数据源与规则</a>
     <a href="#/jobs" data-page="jobs">作业与日志</a>
     <a href="#/settings" data-page="settings">设置</a>
@@ -75,147 +70,14 @@
           <button class="btn danger-ghost" id="btn-clear-history">清空历史</button>
         </div>
       </div>
-      <p class="hint">删除<b>所有</b>账单整理批次目录（含交付 Excel 与底稿）、downloads 下载副本与作业留痕；<b>保留</b>店铺映射、平台解析规则与设置。操作不可恢复：点击后 5 秒内再点一次才执行。只想清某个账期/平台，用「问 AI」让 AI 按条件清理。</p>
+      <p class="hint">只清<b>插件内记录</b>：作业留痕与 downloads 下载副本；<b>输出目录的批次/交付 Excel/底稿/汇总簿全部保留不删</b>（清记录后批次清单仍可见，属预期行为）。店铺映射、平台解析规则与设置同样保留。点击后 5 秒内再点一次才执行。只想清某个账期/平台的留痕，用「问 AI」让 AI 按条件清理。</p>
       <div id="clear-history-result" style="display:none"></div>
     </div>
   </section>
 
-  <!-- 账单整理（只读看板） -->
-  <section data-page="bill" class="page">
-    <div class="hero">
-      <h1>账单整理</h1>
-      <p class="lead">整理动作由 AI 在会话中执行。你只需把账单文件/目录路径发给 AI，例如：「整理京东 JD001 的 8 月账单，路径 E:\…\京东-OK\2026.8-…」。结果在此下载。</p>
-    </div>
-
-    <div class="panel">
-      <h2>怎么让 AI 整理</h2>
-      <p class="hint">在会话里直接说：<b>平台 + 店铺编码 + 账期 + 账单路径</b>。AI 会自动识别京东钱包/结算单/E卡子目录、淘系微信源等附加数据；缺店铺映射时会提示你提供 OMS店铺.xlsx 路径。</p>
-      <p class="hint">示例：「帮我整理抖音 DY007 2026年8月账单，文件在 D:\账单\抖音」 · 「淘宝 TBQY001 八月账单，微信账单在子目录 微信 里」</p>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>账单批次</h2>
-        <div class="panel-tools">
-          <button class="btn ghost" id="btn-batch-refresh">刷新</button>
-          <button class="btn acid ask-ai" data-ask="batches">问 AI：这批结果正常吗</button>
-        </div>
-      </div>
-      <p class="hint">每次整理生成一个带时间戳的批次目录，根目录只放财务交付 Excel（影刀基准格式），点「Excel文件」列即可下载；过程底稿在批次内 底稿/ 子目录。需要清空历史时对 AI 说「清空对账历史」。</p>
-      <div class="table-wrap" id="bill-batches"></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>账单明细行（最新批次）</h2>
-        <button class="btn acid ask-ai" data-ask="batches">问 AI：查指定批次明细</button>
-      </div>
-      <div class="table-wrap" id="bill-rows"></div>
-    </div>
-  </section>
-
-  <!-- SKU对账（2026-11-17 启用） -->
-  <section data-page="match" class="page">
-    <div class="hero">
-      <h1>SKU 对账</h1>
-      <p class="lead">账单货款与巨益出入库单逐单匹配、货款分摊（不带成本表）。产物落 sku匹配/未匹配成本/，不写生产库。</p>
-    </div>
-    <div class="panel">
-      <h2>触发 SKU 对账</h2>
-      <p class="hint">先有「账单整理」批次。指定账单批次 ID，或 账期+平台(+店铺编码) 自动取最新批次；唯品会/爱库存走 B2B 分支（不查 OMS）。</p>
-      <div class="grid-2">
-        <div>
-          <label class="field-label" for="match-period">账期（YYYY-MM）</label>
-          <input id="match-period" type="text" placeholder="2026-10" spellcheck="false" />
-        </div>
-        <div>
-          <label class="field-label" for="match-platform">平台</label>
-          <select id="match-platform"></select>
-        </div>
-        <div>
-          <label class="field-label" for="match-shop">店铺编码（可选）</label>
-          <input id="match-shop" type="text" placeholder="如 HYK001；vip/akc 留空" spellcheck="false" />
-        </div>
-        <div>
-          <label class="field-label" for="match-batch">账单批次 ID（可选，优先）</label>
-          <input id="match-batch" type="text" placeholder="留空 = 按账期+平台取最新账单整理批次" spellcheck="false" />
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn acid" id="btn-run-match">开始 SKU 对账</button>
-      </div>
-      <div id="match-job-progress" class="empty" style="display:none"></div>
-    </div>
-    <div class="panel">
-      <div class="panel-head">
-        <h2>SKU 对账批次（未匹配成本）</h2>
-        <button class="btn ghost" id="btn-match-refresh">刷新</button>
-      </div>
-      <div class="table-wrap" id="match-batches"></div>
-    </div>
-  </section>
-
-  <!-- 成本匹配（2026-11-18 启用） -->
-  <section data-page="cost" class="page">
-    <div class="hero">
-      <h1>成本匹配</h1>
-      <p class="lead">财务物料成本表（不含税 SPU 单价）回填采购单价/发货成本，重算透视毛利（收入/1.13−发货成本）。成功后整批迁移 未匹配成本→已匹配成本（唯品会全旬成功才迁移）。</p>
-    </div>
-    <div class="panel">
-      <h2>触发成本匹配</h2>
-      <p class="hint">成本表缺省查找 结果根/{账期}/物料成本_YYYYMM.xlsx（{月}月末 sheet）；财务放在别处时填完整路径。批次留空 = 该账期全部 SKU 批次（含已匹配成本重跑，原地覆盖）。</p>
-      <div class="grid-2">
-        <div>
-          <label class="field-label" for="cost-period">账期（YYYY-MM，必填）</label>
-          <input id="cost-period" type="text" placeholder="2026-10" spellcheck="false" />
-        </div>
-        <div>
-          <label class="field-label" for="cost-batch">SKU 批次（可选）</label>
-          <select id="cost-batch"><option value="">全部批次</option></select>
-        </div>
-        <div>
-          <label class="field-label" for="cost-file">成本表路径（可选，缺省自动查找）</label>
-          <input id="cost-file" type="text" placeholder="如 C:\Users\…\物料成本_202610.xlsx" spellcheck="false" />
-        </div>
-        <div>
-          <label class="field-label" for="cost-tax">税口径</label>
-          <select id="cost-tax">
-            <option value="0" selected>不含税（默认：毛利=收入/1.13−发货成本）</option>
-            <option value="1">含税（毛利=收入−发货成本）</option>
-          </select>
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn acid" id="btn-run-cost">开始成本匹配</button>
-        <button class="btn ghost" id="btn-cost-refresh">刷新批次</button>
-      </div>
-      <div id="cost-job-progress" class="empty" style="display:none"></div>
-    </div>
-    <div class="panel">
-      <div class="panel-head">
-        <h2>SKU 批次状态（未匹配成本 / 已匹配成本）</h2>
-      </div>
-      <div class="table-wrap" id="cost-batches"></div>
-    </div>
-  </section>
-
-  <!-- 数据库回传（占位） -->
-  <section data-page="writeback" class="page">
-    <div class="hero">
-      <h1>数据库回传</h1>
-      <p class="lead">把已匹配的巨益单据回写数据库，标记「已对账」与对账周期。</p>
-    </div>
-    <div class="panel placeholder" id="ph-writeback"></div>
-  </section>
-
-  <!-- 氚云对接（占位） -->
-  <section data-page="chuanyun" class="page">
-    <div class="hero">
-      <h1>氚云对接</h1>
-      <p class="lead">对账结果推送氚云。当前账单整理已导出「氚云导入模板」sheet，可手工导入。</p>
-    </div>
-    <div class="panel placeholder" id="ph-chuanyun"></div>
-  </section>
+  <!-- 2026-11-18 UI 精简：账单整理/SKU对账/成本匹配/数据库回传/氚云对接五个能力页已移除。
+       全部操作由 AI 在会话中通过 MCP 工具执行（start_recon/sku_match/cost_match/writeback/
+       chuanyun_sync/bill_pivot_summary/sku_pivot_summary）；本页只保留看板与设置。 -->
 
   <!-- 数据源与规则（只读） -->
   <section data-page="sources" class="page">
@@ -297,7 +159,7 @@
 
     <div class="panel">
       <div class="panel-head"><h2>清空历史</h2></div>
-      <p class="hint">删除所有账单整理批次目录（含底稿）、downloads 下载副本与作业留痕；<b>保留</b>店铺映射、平台解析规则与设置。操作不可恢复——在会话里告诉 AI，它会先与你确认再执行。</p>
+      <p class="hint">只清插件内记录（作业留痕 + downloads 下载副本）；<b>输出目录的批次/Excel/底稿全部保留</b>，店铺映射、规则与设置同样保留。在会话里告诉 AI，它会先与你确认再执行。</p>
     </div>
   </section>
 </main>

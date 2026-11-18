@@ -4,12 +4,15 @@
   · 账单整理     —— 可用（结果落文件，不入数据库）
   · SKU 对账     —— 可用（2026-11-17 启用，2026-11-18 入口接线补齐）
   · 成本匹配     —— 可用（2026-11-18 启用，SKU 对账下游，成功后迁移 已匹配成本/）
-  · 数据库回传   —— 占位暂缓
-  · 氚云对接     —— 占位暂缓（账单整理已导出氚云导入模板 sheet）
+  · 数据库回传   —— 可用（2026-11-18 启用，缺省 dry-run 预检不写库；
+                   真实落库须显式 dry_run=0 且经用户确认）
+  · 氚云对接     —— 可用（2026-11-18 启用，缺省 dry-run 预检零 HTTP 不推送；
+                   真实推送须显式 dry_run=0 且经用户确认）
 
 因此本文件**不再有** query_match_detail / unmatched_summary / query_pivot /
-cost_summary / query_writeback / load_cost_file 这些工具（对应表已退役）。
-算法没有删，整体封存在 core/pipeline_dormant.py。
+cost_summary / query_writeback / load_cost_file 这些工具（对应表已退役，
+查询走文件态批次工具 bill_batches/sku_batches/query_bill_rows + 底稿）。
+改版前库表版编排封存于 core/pipeline_dormant.py（仅历史口径参考，不在运行路径上）。
 
 所有 action 返回归一结构：{ok, status, summary, data}；大结果只回摘要 + 分页读取入口。
 财务口径纪律写在 skills/recon_assist/SKILL.md，主脑按那里执行。
@@ -25,7 +28,7 @@ for _p in (str(_PLUGIN_DIR), r"D:\DesktopAgent"):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from core import artifacts, db, joblog, pipeline, repo, rules_store  # noqa: E402
+from core import artifacts, db, joblog, pipeline, repo, rules_store, summaries  # noqa: E402
 from core.errors import ReconError  # noqa: E402
 from core.pipeline import _as_file_map, _as_list  # noqa: E402
 from core.platforms.registry import list_platforms, parse_platform  # noqa: E402
@@ -81,13 +84,74 @@ def _int(value: Any, default: int) -> int:
 # ------------------------------------------------------------------ 状态与概览
 
 
+def dist_check(include_git: Any = "1", **_) -> dict:
+    """分发前安全自检（2026-11-18，凭据防泄露机制；只读，不改文件不连库不发HTTP）。
+
+    扫描插件目录工作区 + git 全历史：本机真实凭据值是否出现在文件里、
+    硬编码口令样赋值、PEM 私钥、混入的运行时文件（settings/plugin.db/结果/日志）。
+    返回 verdict（safe/caution/blocked）+ findings（文件+行号，秘密打码）+
+    打包排除清单 + 凭据存储架构说明。分享插件给其他用户前先调它。
+    """
+    from core import distcheck
+
+    try:
+        data = distcheck.dist_check(
+            include_git=str(include_git or "1") not in ("0", "false", "False"))
+    except Exception as exc:
+        return _fail(f"分发安全自检失败：{type(exc).__name__}: {exc}")
+    v = data["verdict"]
+    n_ws = len(data["workspace"]["findings"])
+    n_git = len(data["git_history"].get("findings") or [])
+    n_rt = len(data["workspace"]["runtime_files_in_plugin_dir"])
+    summary = {
+        "safe": f"分发安全自检通过：工作区与 git 历史均无凭据命中，插件目录无运行时文件，可分享",
+        "caution": f"可分享但须按排除清单打包：插件目录混入 {n_rt} 个运行时文件/残留（非凭据）",
+        "blocked": f"禁止直接分享：发现凭据/私钥命中（工作区 {n_ws} / git历史 {n_git}），先清理 findings 所列文件",
+    }[v]
+    return _ok(summary, data)
+
+
+def env_status(**_) -> dict:
+    """插件运行环境自检（2026-11-18，分发用户入口；只读，不连库不发HTTP不安装）。
+
+    返回逐包安装状态/版本（required/conditional/optional 三层）、六能力就绪矩阵、
+    缺失包 venv_install 安装指引、ADB/氚云凭据就绪状态（不暴露口令）。
+    缺依赖时让 AI 按 install_guidance 调宿主 venv_install 安装到 sidecar 运行时。
+    """
+    from core import envcheck
+
+    try:
+        data = envcheck.env_status()
+    except Exception as exc:
+        return _fail(f"环境自检失败：{type(exc).__name__}: {exc}")
+    miss = data.get("missing") or {}
+    n_miss = sum(len(v) for v in miss.values())
+    if data["overall"] == "ok":
+        summary = "运行环境就绪：全部依赖已安装"
+    elif data["overall"] == "error":
+        summary = (f"核心依赖缺失：{', '.join(miss.get('required') or [])}，"
+                   "插件不可用，请按 install_guidance 调 venv_install 安装")
+    else:
+        parts = []
+        if miss.get("conditional"):
+            parts.append(f"条件依赖缺失 {', '.join(miss['conditional'])}（对应功能真实路径不可用，dry-run 不受影响）")
+        if miss.get("optional"):
+            parts.append(f"可选加速缺失 {', '.join(miss['optional'])}（自动回落，功能不受影响）")
+        summary = "核心依赖已齐；" + "；".join(parts)
+    return _ok(summary, data)
+
+
 def capability_status(**_) -> dict:
-    """五个能力的开放状态（账单整理/SKU对账/成本匹配可用，回传/氚云暂缓）。"""
+    """五个能力的开放状态（五能力全可用；回传/氚云缺省 dry-run 预检）。"""
     rows = pipeline.capability_status()
     active = [r["name"] for r in rows if r["status"] == "active"]
     deferred = [r["name"] for r in rows if r["status"] != "active"]
+    summary = f"可用：{'、'.join(active)}"
+    if deferred:
+        summary += f"；暂缓：{'、'.join(deferred)}"
+    summary += "（回传与氚云缺省 dry-run 预检，不写外部系统）"
     return _ok(
-        f"可用：{'、'.join(active)}；暂缓：{'、'.join(deferred)}",
+        summary,
         {"rows": rows, "active": active, "deferred": deferred,
          "note": pipeline.DEFERRED_NOTE},
     )
@@ -118,7 +182,7 @@ def overview(days: Any = 90, **_) -> dict:
             f"（{latest.get('platform', '')}/{latest.get('shop_code', '')}/{latest.get('period', '')}："
             f"{latest.get('status', '')}）"
         )
-    parts.append("SKU对账/成本匹配/回传/氚云对接暂缓")
+    parts.append("SKU对账/成本匹配/数据库回传/氚云对接（回传与氚云缺省 dry-run 预检）可用")
     return _ok("；".join(parts), data)
 
 
@@ -133,7 +197,7 @@ def data_status(**_) -> dict:
 def db_status(**_) -> dict:
     """巨益数据库凭据状态（不暴露口令）。
 
-    改版后账单整理**不连数据库**；ADB 只在 SKU 对账与回传启用后才需要。
+    账单整理**不连数据库**；ADB 仅 SKU 对账取数与回传真实落库需要（均已启用）。
     凭据未配置 / 连不上都属于「需要用户处理的引导态」，不是系统失败：
     action 层一律返回 ok=True，连通性放在 data.ok 里，由管理页渲染黄色引导。
     """
@@ -142,11 +206,11 @@ def db_status(**_) -> dict:
     except Exception as exc:
         return _ok(f"数据库探测异常：{type(exc).__name__}: {exc}",
                    {"ok": False, "stage": "probe_error", "message": str(exc)[:300],
-                    "needed_by": "SKU对账 / 数据库回传（暂缓）"})
+                    "needed_by": "SKU对账取数 / 数据库回传真实落库（回传缺省 dry-run 不连库）"})
     ready = bool(res.get("ok"))
     msg = res.get("message") or res.get("hint") or ("已连接" if ready else "未就绪")
     res = dict(res)
-    res["needed_by"] = "SKU对账 / 数据库回传（当前暂缓；账单整理不需要数据库）"
+    res["needed_by"] = "SKU对账取数 / 数据库回传真实落库（账单整理不需要数据库；回传缺省 dry-run 不连库）"
     return _ok(str(msg), res)
 
 
@@ -216,13 +280,17 @@ def start_recon(stage: Any = "bill", platform: Any = "", shop_code: Any = "",
                 file_paths: Any = "", extra_files: Any = "", export: Any = "1",
                 agent_session_id: Any = "", bill_batch_id: Any = "",
                 cost_file: Any = "", include_tax: Any = "0",
-                lookback_months: Any = "", **_) -> dict:
+                lookback_months: Any = "", dry_run: Any = "1", **_) -> dict:
     """触发对账作业（异步 Job）。2026-11-18 cost-match spec C5：按 stage 分发。
 
     stage=bill  账单整理（platform/period/file_paths 必填）；
     stage=match SKU 对账（bill_batch_id 或 period+platform+shop_code 定位账单批次）；
     stage=cost  成本匹配（period 必填；cost_file 缺省查 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx）；
-    writeback / chuanyun / full 仍占位暂缓（status=deferred）。
+    stage=writeback 数据库回传（period 必填；dry_run 缺省 1=预检不写库，
+                    真实落库须显式 dry_run=0 且经用户确认）；
+    stage=chuanyun 氚云对接（period 必填；dry_run 缺省 1=预检零 HTTP，
+                    真实推送须显式 dry_run=0 且经用户确认）；
+    full 仍占位暂缓（status=deferred）。
     """
     st = str(stage or "bill").strip().lower()
     if st in DEFERRED_STAGES and st not in ACTIVE_STAGES:
@@ -281,6 +349,27 @@ def start_recon(stage: Any = "bill", platform: Any = "", shop_code: Any = "",
             "platform": plat, "shop_code": str(shop_code or ""),
             "include_tax": str(include_tax or "0"),
         })
+    elif st == "writeback":
+        if not str(period or "").strip():
+            return _fail("writeback 需要 period（YYYY-MM）")
+        params.update({
+            "period": str(period).strip(),
+            "bill_batch_id": str(bill_batch_id or ""),
+            "platform": plat, "shop_code": str(shop_code or ""),
+            "s_date": str(s_date or ""), "e_date": str(e_date or ""),
+            # 缺省 dry-run 预检：只统计+SQL预览，不连库不写库（2026-11-18 用户决策）
+            "dry_run": "0" if str(dry_run or "1").strip() in ("0", "false", "False") else "1",
+        })
+    elif st == "chuanyun":
+        if not str(period or "").strip():
+            return _fail("chuanyun 需要 period（YYYY-MM）")
+        params.update({
+            "period": str(period).strip(),
+            "bill_batch_id": str(bill_batch_id or ""),
+            "platform": plat, "shop_code": str(shop_code or ""),
+            # 缺省 dry-run 预检：零 HTTP，不向氚云发送任何请求（2026-11-18 用户决策）
+            "dry_run": "0" if str(dry_run or "1").strip() in ("0", "false", "False") else "1",
+        })
 
     if str(agent_session_id or "").strip():
         params["agent_session_id"] = str(agent_session_id).strip()
@@ -293,12 +382,21 @@ def start_recon(stage: Any = "bill", platform: Any = "", shop_code: Any = "",
         return _fail(f"作业启动失败：{type(exc).__name__}: {exc}")
 
     job_id = str((job or {}).get("job_id") or "")
-    label = {"bill": "账单整理", "match": "SKU对账", "cost": "成本匹配"}[st]
+    label = {"bill": "账单整理", "match": "SKU对账", "cost": "成本匹配",
+             "writeback": "数据库回传", "chuanyun": "氚云对接"}[st]
     note = {
         "bill": "结果落 results/YYYY-MM/账单整理/{批次}/（重跑覆盖；爱库存无店铺段；"
                 "唯品会为 YYYY-MM-唯品会-唯品中国，旬文件在目录内累积）",
         "match": "结果落 results/YYYY-MM/sku匹配/未匹配成本/{批次}/；不写生产库",
         "cost": "读 未匹配成本/ 批次底稿回填成本；全部成功后整批迁移 已匹配成本/（VIP 全旬成功才迁移）",
+        "writeback": ("按 OMS 单据 id 回写 mid_jedz_datas（bill_state=已对账 / bill_period=中文账期）。"
+                      + ("当前为 dry-run 预检：不连库不写库，只出统计与 SQL 预览"
+                         if params.get("dry_run") == "1"
+                         else "真实回传：成功后整批迁移 已回传数据库/，失败批次留守")),
+        "chuanyun": ("「氚云导入模板」sheet → 店铺资金账单主表+子表 → CreateBizObject 推送。"
+                     + ("当前为 dry-run 预检：零 HTTP 调用，payload 预览落 底稿/chuanyun_preview/"
+                        if params.get("dry_run") == "1"
+                        else "真实推送：成功文件移入批次内 氚云导入成功/，失败留守")),
     }[st]
     return _ok(
         f"{label}作业已启动（{plat or '全平台'} · {params.get('period') or params.get('s_date', '')}）",
@@ -494,14 +592,84 @@ def sku_batches(period: Any = "", platform: Any = "", shop_code: Any = "",
     return _ok(f"SKU 批次 {len(rows)} 个（{'/'.join(states)}）", {"rows": rows})
 
 
-def writeback(**_) -> dict:
-    """数据库回传 —— 占位暂缓。"""
-    return _deferred("writeback")
+def writeback(period: Any = "", bill_batch_id: Any = "", platform: Any = "",
+              shop_code: Any = "", s_date: Any = "", e_date: Any = "",
+              dry_run: Any = "1", agent_session_id: Any = "", **_) -> dict:
+    """数据库回传（异步 Job，2026-11-18 启用，承接影刀 look_sku.update_sql）。
+
+    按 SKU 对账产物「已匹配的巨益单号」的 OMS 单据 id 回写 ADB：
+    UPDATE mid_jedz_datas SET bill_state='已对账', bill_period=中文账期 WHERE id=%s。
+    **dry_run 缺省 1 = 预检**：只统计 + SQL 预览，不连库不写库（当前版本纪律）。
+    真实落库须显式 dry_run=0 且先经用户确认；成功后批次迁移 已回传数据库/。
+    """
+    return start_recon(stage="writeback", period=period, bill_batch_id=bill_batch_id,
+                       platform=platform, shop_code=shop_code,
+                       s_date=s_date, e_date=e_date, dry_run=dry_run,
+                       agent_session_id=agent_session_id)
 
 
-def chuanyun_sync(**_) -> dict:
-    """氚云对接 —— 占位暂缓（账单整理已导出「氚云导入模板」sheet 供手工导入）。"""
-    return _deferred("chuanyun")
+def chuanyun_sync(period: Any = "", bill_batch_id: Any = "", platform: Any = "",
+                  shop_code: Any = "", dry_run: Any = "1",
+                  agent_session_id: Any = "", **_) -> dict:
+    """氚云对接（异步 Job，2026-11-18 启用，承接影刀 api_chuanyun.file_arrange）。
+
+    把账单整理交付 Excel 的「氚云导入模板」sheet 经五张氚云主数据表映射，
+    组装「店铺资金账单」主表+子表 → OpenAPI CreateBizObject 推送。
+    **dry_run 缺省 1 = 预检**：零 HTTP 调用（主数据只读查询也不发），
+    只做模板校验 + 金额合计 + payload 预览落盘（底稿/chuanyun_preview/）。
+    真实推送须显式 dry_run=0 且先经用户确认（凭据走 RECON_H3_ENGINE_CODE/SECRET）；
+    成功文件移入批次内 氚云导入成功/。用 job_status 查终态。
+    """
+    return start_recon(stage="chuanyun", period=period, bill_batch_id=bill_batch_id,
+                       platform=platform, shop_code=shop_code, dry_run=dry_run,
+                       agent_session_id=agent_session_id)
+
+
+# ------------------------------------------------------------------ 独立透视汇总工具（2026-11-18）
+
+
+def bill_pivot_summary(period: Any = "", platform: Any = "", shop_code: Any = "",
+                       bill_batch_id: Any = "", **_) -> dict:
+    """店铺账单整理透视汇总（同步，承接影刀 cost_match.final_bill_pivot）。
+
+    扫该账期账单整理批次交付 Excel 的 8 列透视 sheet（按列结构识别，
+    不依赖 sheet 位置），concat 输出「账单整理透视汇总表_{时间戳}.xlsx」
+    到 results/{YYYY-MM}/汇总/，附下载链接与收/退款/现金流合计。
+    纯本地聚合：不连数据库、不推氚云、不修改批次产物。period 必填。
+    """
+    try:
+        res = summaries.bill_pivot_summary(
+            period=str(period or "").strip(),
+            platform=parse_platform(str(platform or "")) if str(platform or "").strip() else "",
+            shop_code=str(shop_code or ""), bill_batch_id=str(bill_batch_id or ""))
+    except ReconError as exc:
+        return _fail(exc.message, error_detail=exc.detail)
+    except Exception as exc:
+        return _fail(f"账单透视汇总失败：{type(exc).__name__}: {exc}")
+    return _ok(res["message"], res)
+
+
+def sku_pivot_summary(period: Any = "", platform: Any = "", shop_code: Any = "",
+                      bill_batch_id: Any = "", state: Any = "", **_) -> dict:
+    """店铺sku匹配透视汇总（同步，承接影刀 cost_match.final_pivot）。
+
+    扫该账期 SKU 批次交付 Excel 的 5 sheet：店铺/款号/匹配三张透视 concat；
+    收退款明细按 店铺名称×订单年月 汇总货款分摊金额后 outer merge。
+    输出「sku匹配数据透视汇总表_{时间戳}.xlsx」4 sheet 到 results/{YYYY-MM}/汇总/。
+    state 缺省三态全扫（同一批次只在一个状态目录，不重复）；可指定单态。
+    纯本地聚合：不连数据库、不推氚云、不修改批次产物。period 必填。
+    """
+    try:
+        res = summaries.sku_pivot_summary(
+            period=str(period or "").strip(),
+            platform=parse_platform(str(platform or "")) if str(platform or "").strip() else "",
+            shop_code=str(shop_code or ""), bill_batch_id=str(bill_batch_id or ""),
+            state=str(state or ""))
+    except ReconError as exc:
+        return _fail(exc.message, error_detail=exc.detail)
+    except Exception as exc:
+        return _fail(f"SKU透视汇总失败：{type(exc).__name__}: {exc}")
+    return _ok(res["message"], res)
 
 
 # ------------------------------------------------------------------ 设置与历史清理（2026-11-16）
@@ -556,15 +724,19 @@ def save_settings(results_dir: Any = None, **_) -> dict:
 
 def clear_history(confirm: Any = "", period: Any = "", platform: Any = "",
                   shop_code: Any = "", **_) -> dict:
-    """清空账单整理历史：批次目录 + downloads 副本 + 作业留痕。
+    """清空历史记录（2026-11-18 改版：只清插件内信息，**不删输出目录任何文件**）。
 
-    保留店铺映射（数据库唯一表）、rules/ 规则文件、settings.json。
-    必须显式传 confirm="yes" 才执行（UI 二次确认后传入 / AI 先向用户确认），防误触。
-    细粒度（2026-11-16）：给 period/platform/shop_code 任一时只删命中批次目录，
-    downloads 与作业留痕保留；全空则全清。
+    清理范围：作业留痕 logs/jobs.jsonl（支持条件过滤）+ downloads 下载副本
+    （插件运行时缓存，仅全清时删）。输出目录（results/ 或自定义 results_dir）
+    下的批次目录、交付 Excel、底稿、汇总簿一律原样保留——批次清单是扫目录
+    得来的文件态，清记录后批次仍可见，这是预期行为。
+    保留：店铺映射、rules/ 规则、settings.json。
+    必须显式传 confirm="yes" 才执行（UI 二次确认 / AI 先向用户确认），防误触。
+    细粒度：给 period/platform/shop_code 任一时只删命中条件的作业留痕，
+    downloads 副本保留；全空则留痕全清 + downloads 清空。
     """
     if str(confirm or "").strip().lower() != "yes":
-        return _fail("清空历史需要二次确认（confirm=yes）。此操作会删除批次结果文件，不可恢复。")
+        return _fail("清空历史需要二次确认（confirm=yes）。只清插件内记录（作业留痕/下载副本），输出目录文件不受影响。")
     try:
         res = artifacts.clear_history(period=str(period or "").strip(),
                                       platform=str(platform or "").strip(),
@@ -574,14 +746,12 @@ def clear_history(confirm: Any = "", period: Any = "", platform: Any = "",
     if res.get("scoped"):
         sc = res.get("scope") or {}
         cond = "/".join(v for v in (sc.get("period"), sc.get("platform"), sc.get("shop_code")) if v)
-        msg = f"已按条件（{cond}）清理：批次 {res['batches_deleted']} 个（下载副本与作业留痕保留）"
+        msg = f"已按条件（{cond}）清理作业留痕 {res['joblog_removed']} 条（输出目录文件与下载副本保留）"
     else:
-        msg = (f"已清空：批次 {res['batches_deleted']} 个、下载副本 {res['downloads_removed']} 个、"
-               f"作业留痕 {res['joblog_removed']} 条")
+        msg = (f"已清空插件内记录：作业留痕 {res['joblog_removed']} 条、下载副本 {res['downloads_removed']} 个"
+               "（输出目录的批次/Excel/底稿全部保留）")
     if res["errors"]:
         msg += f"；{len(res['errors'])} 项删除失败（可能被占用）"
-    if res["kept_dirs"] and not res.get("scoped"):
-        msg += f"；保留非批次目录 {len(res['kept_dirs'])} 个"
     return _ok(msg, res)
 
 

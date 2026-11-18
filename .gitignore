@@ -20,6 +20,9 @@ rules/.*.tmp
 # SSH 残留（GIT_SSH_COMMAND 路径被吞时 ssh 会把 known_hosts 写成相对文件名）
 *ssh_known_hosts*
 
+# 本地跑验证/回归的日志（留痕在 data/extensions/recon_workbench/logs/）
+*.log
+
 # 编辑器/系统
 .vscode/
 .idea/

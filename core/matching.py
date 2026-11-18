@@ -558,27 +558,9 @@ def rematch_instant_refund(
     return out
 
 
-def apply_advice(receipt: pd.DataFrame, refund: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """统一三分处理意见（成本结转口径核心）。
-
-    · 收款已匹配 → 结转成本
-    · 收款未匹配且秒退 → 成本不做处理
-    · 收款未匹配非秒退 → 成本不做处理（待人工判定）
-    · 退款：入库有对应出库 → 冲发出商品；无 → 冲成本
-    """
-    rec = receipt.copy()
-    if not rec.empty:
-        rec["处理意见"] = np.where(
-            rec["巨益单据匹配状态"] == MATCHED, ADVICE_CARRY, ADVICE_NO_ACTION
-        )
-        instant = rec.get("是否秒退判断", pd.Series(index=rec.index, dtype="object")) == "是"
-        rec.loc[instant, "处理意见"] = ADVICE_NO_ACTION
-
-    ref = refund.copy()
-    if not ref.empty:
-        matched_in = ref["巨益单据匹配状态"] == MATCHED
-        ref["处理意见"] = np.where(matched_in, ADVICE_OFFSET_SHIP, ADVICE_OFFSET_COST)
-    return rec, ref
+# 注：早期三分版 apply_advice 已于 2026-11-18 总体 review 移除（死代码）：
+# 现行五类财务判断在 match_receipt/match_refund 内按 历史对账记录/秒退/补录 等
+# 条件就地赋值（本文件 800-945 行段），口径 SSOT=sku-match-methodology.md。
 
 
 def build_oms_writeback(receipt: pd.DataFrame, refund: pd.DataFrame, *, period: str = "") -> pd.DataFrame:

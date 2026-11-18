@@ -62,3 +62,12 @@ class WritebackError(ReconError):
     """
 
     code = "writeback_error"
+
+
+class ChuanyunError(ReconError):
+    """氚云推送失败。
+
+    单文件失败不抛，聚合后由 chuanyun 汇总；整体不可用（凭据缺失/网络不通）才抛。
+    """
+
+    code = "chuanyun_error"

@@ -1,0 +1,58 @@
+# recon_workbench 运行环境检测声明（随插件分发）
+#
+# 宿主机制：Desktop Agent 的 env_check / 启动体检会读取 skill 目录下的
+# environment_checks.yaml（kind=python_package 逐包探测），缺失包由 AI 调
+# venv_install 安装到 sidecar 运行时（不要 Bash pip install）。
+# 本清单与 core/envcheck.py 的 DEPENDENCIES 保持同步（verify_envcheck.py 有一致性断言）。
+#
+# required=true 仅对「五能力全开」而言；账单整理/SKU对账/成本匹配/汇总
+# 只需 core 三包 + Excel 引擎（openpyxl 即可），数据库/氚云依赖按功能条件安装。
+checks:
+  - id: recon-pandas
+    label: pandas（对账核心数据处理）
+    kind: python_package
+    target: pandas
+    required: true
+    hint: 全部能力必需；缺失时账单整理/SKU对账/成本匹配/汇总均不可用。venv_install 安装。
+  - id: recon-numpy
+    label: numpy（数值计算）
+    kind: python_package
+    target: numpy
+    required: true
+    hint: 全部能力必需（pandas 依赖，通常随 pandas 一并安装）。
+  - id: recon-openpyxl
+    label: openpyxl（Excel 读写引擎）
+    kind: python_package
+    target: openpyxl
+    required: true
+    hint: 全部能力必需；Excel 导出与汇总读簿的兜底引擎（xlsxwriter/calamine 缺失时回落到它）。
+  - id: recon-mysql-connector
+    label: mysql-connector-python（巨益 ADB 驱动）
+    kind: python_package
+    target: mysql-connector-python
+    required: false
+    hint: SKU对账取数/数据库回传需要；纯本地功能（账单整理/成本匹配/汇总/dry-run预检）不依赖。缺失时相关功能报可读错误，venv_install 安装。
+  - id: recon-requests
+    label: requests（氚云 OpenAPI）
+    kind: python_package
+    target: requests
+    required: false
+    hint: 氚云真实推送需要；dry-run 预检零 HTTP 不依赖。venv_install 安装。
+  - id: recon-xlsxwriter
+    label: xlsxwriter（Excel 写引擎·可选加速）
+    kind: python_package
+    target: xlsxwriter
+    required: false
+    hint: 可选；缺失自动回落 openpyxl，功能不受影响。
+  - id: recon-pyarrow
+    label: pyarrow（parquet 底稿·可选）
+    kind: python_package
+    target: pyarrow
+    required: false
+    hint: 可选；缺失时底稿自动落 CSV（utf-8-sig），列序与金额口径完全一致。
+  - id: recon-calamine
+    label: python-calamine（大簿秒级读·可选加速）
+    kind: python_package
+    target: python-calamine
+    required: false
+    hint: 可选；SKU 透视汇总读 VIP 67MB 级大簿时秒级 vs openpyxl 分钟级；缺失自动回落 openpyxl 流式读。

@@ -24,6 +24,23 @@ ENV_ADB_USER = "RECON_ADB_USER"
 ENV_ADB_PASSWORD = "RECON_ADB_PASSWORD"
 ENV_ADB_DATABASE = "RECON_ADB_DATABASE"
 
+# 氚云 OpenAPI（2026-11-18 氚云对接启用；凭据同样只走环境变量，
+# 原 main.py / error_push_chuanyun.py 里明文 EngineCode/EngineSecret 废弃）
+ENV_H3_ENGINE_CODE = "RECON_H3_ENGINE_CODE"
+ENV_H3_ENGINE_SECRET = "RECON_H3_ENGINE_SECRET"
+H3_API_URL = "https://www.h3yun.com/OpenApi/Invoke"
+
+# 氚云表单 SchemaCode（原 api_chuanyun.py 硬编码；非凭据，集中到这里便于核对）
+H3_SCHEMA_BILL = "D283056ad6c898456d54f1a9070af05405757e2"      # 店铺资金账单（推送主表）
+H3_SCHEMA_BILL_DETAIL = "D283056F87eba12298e14abe8fa733584ab59e1e"  # 主表内子表键
+H3_SCHEMA_EXPENSE = "D2830568c4792c6d1a8471f887016379899217e"   # 账单科目
+H3_SCHEMA_MANAGE_EXP = "Sfgnzgldaoyq7s5mudhv1ybah6"             # 管理科目
+H3_SCHEMA_SHOP = "Shzsv8kon2rogghsiac9v73x50"                   # 店铺（决算部门）
+H3_SCHEMA_MONEY_ACCT = "Sont3kyzi7iakxb1o229ci02d4"             # 资金账户
+H3_SCHEMA_MONEY_VALUE = "oolrboodvyh27avixb8psukl4"             # 资金余额台账
+H3_SCHEMA_OMS_DEPT = "Spdhfz3302f74zacj21ruah337"               # 决算部门-巨益编号
+H3_SCHEMA_ERROR_PUSH = "D283056e4a45301f1994768aaa4bbfa3247ca8b"  # 报错推送（本期不接）
+
 # 库表名（原脚本硬编码在 SQL 里，集中到这里）
 TABLE_JEDZ = "mid_jedz_datas"        # 出入库单（B2C配货单 / B2C退换货通知单 / 退款单）
 TABLE_PRODUCT = "AI_product_info"    # 商品主数据（款号/品类/年份/季节/品牌/吊牌价/标准成本单价）
@@ -201,6 +218,38 @@ def adb_config_status() -> dict:
     }
 
 
+def h3_config_status() -> dict:
+    """探测氚云凭据是否就绪（不连接、不抛异常、不暴露密钥），供管理页显示。"""
+    names = (ENV_H3_ENGINE_CODE, ENV_H3_ENGINE_SECRET)
+    present = {name: bool(env(name).strip()) for name in names}
+    missing = [k for k, v in present.items() if not v]
+    return {
+        "ready": not missing,
+        "missing_env": missing,
+        "present_env": sorted(k for k, v in present.items() if v),
+        "api_url": H3_API_URL,
+        "hint": (
+            "已就绪，可推送氚云（真实推送须显式 dry_run=0 且经用户确认）"
+            if not missing
+            else f"缺少 {', '.join(missing)}，氚云真实推送不可用；dry-run 预检不受影响"
+        ),
+    }
+
+
+def load_h3_headers() -> dict:
+    """氚云 OpenAPI 请求头（凭据来自环境变量）；缺失抛 ConfigError。"""
+    code = env(ENV_H3_ENGINE_CODE).strip()
+    secret = env(ENV_H3_ENGINE_SECRET).strip()
+    missing = [n for n, v in ((ENV_H3_ENGINE_CODE, code), (ENV_H3_ENGINE_SECRET, secret)) if not v]
+    if missing:
+        raise ConfigError(
+            "氚云凭据未配置",
+            detail={"missing_env": missing,
+                    "hint": f"请在本机系统环境变量中配置 {ENV_H3_ENGINE_CODE} / {ENV_H3_ENGINE_SECRET}"},
+        )
+    return {"Content-Type": "application/json", "EngineCode": code, "EngineSecret": secret}
+
+
 def plugin_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -239,19 +288,8 @@ def period_label(period: str, *, s_date: str = "", e_date: str = "") -> str:
     return ""
 
 
-def period_from_label(label: str) -> str:
-    """中文账期标签 → 'YYYY-MM'（读库时反向解析）。"""
-    s = str(label or "").strip()
-    if not s:
-        return ""
-    try:
-        y = s.split("年")[0]
-        m = s.split("年")[1].replace("月", "").split("-")[0]
-        if y.isdigit() and m.isdigit():
-            return f"{y}-{m.zfill(2)}"
-    except (IndexError, AttributeError):
-        pass
-    return s
+# 注：period_from_label（中文标签反解 YYYY-MM）已于 2026-11-18 总体 review 移除
+# （死代码）：文件态布局以目录名 {YYYY-MM} 为准，不需要从中文标签反解。
 
 
 def runtime_dir() -> Path:

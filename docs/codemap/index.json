@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "recon_workbench Code Map",
-    "version": "1.2.0",
+    "version": "1.9.0",
     "generated": "2026-11-16",
     "updated": "2026-11-18",
     "description": "对账工作台插件代码结构机器可读索引（参照 AI_RPA docs/codemap 规范）",
@@ -10,11 +10,11 @@
   "entry_points": {
     "job_entry": {
       "path": "run.py",
-      "description": "Extension Job 入口；2026-11-18 cost-match spec C5 按 stage 分发：bill→run_bill、match→run_match（Q8 遗留已补）、cost→run_cost（period/cost_file/bill_batch_id/include_tax）；writeback/chuanyun/full 返回 deferred 占位"
+      "description": "Extension Job 入口；按 stage 分发：bill→run_bill、match→run_match、cost→run_cost、writeback→run_writeback、chuanyun→run_chuanyun（2026-11-18 启用，dry_run 缺省 1=预检不写库/零HTTP不推送）；full 返回 deferred 占位"
     },
     "mcp_actions": {
       "path": "actions.py",
-      "description": "24 个 MCP 工具的后端实现（config.json mcp_tools 声明驱动）；sku_match/cost_match 接异步 Job（start_recon 分发）、sku_batches 扫 sku匹配/{状态}/ 批次清单（2026-11-18）"
+      "description": "28 个 MCP 工具的后端实现（config.json mcp_tools 声明驱动）；sku_match/cost_match/writeback/chuanyun_sync 接异步 Job（start_recon 按 stage 分发；writeback/chuanyun 缺省 dry_run=1）、sku_batches 扫 sku匹配/{状态}/ 批次清单；bill/sku_pivot_summary、env_status、dist_check 为同步工具（2026-11-18）"
     },
     "config_ssot": {
       "path": "config.json",
@@ -22,7 +22,7 @@
     },
     "orchestrator": {
       "path": "core/pipeline.py",
-      "description": "run_bill → 唯品会多旬分发(_vip_expand_xuns/_vip_run_xuns) → _run_bill_single；jd 只给 period 自动推上月末~月末。run_match（2026-11-17 启用，不带成本）：bill_goods → split_bill → match_all → 分摊对平门 → finalize → 产品/成本回填 → pivots → 落 sku匹配/未匹配成本/{批次}。run_cost（2026-11-18 启用，文件态）：list_sku_batches 批次发现(未匹配成本+已匹配成本重跑) → sku_batch_units(VIP按旬) → read_match_draft 底稿 → apply_cost_stage 回填 → _cost_conserve_check 守恒门(A8) → pivots(stage=cost 重新透视 A3) → 临时名导出+6sheet校验转正 → cost底稿/manifest留痕 → 全单元成功才 migrate_sku_batch(VIP全旬成功才迁移 A6)；ACTIVE_STAGES=(bill,match,cost)；capability_status 三能力 active 与入口一致"
+      "description": "run_bill → 唯品会多旬分发(_vip_expand_xuns/_vip_run_xuns) → _run_bill_single；jd 只给 period 自动推上月末~月末。run_match（2026-11-17 启用，不带成本）：bill_goods → split_bill → match_all → 分摊对平门 → finalize → 产品/成本回填 → pivots → 落 sku匹配/未匹配成本/{批次}。run_cost（2026-11-18 启用，文件态）：list_sku_batches 批次发现(未匹配成本+已匹配成本重跑) → sku_batch_units(VIP按旬) → read_match_draft 底稿 → apply_cost_stage 回填 → _cost_conserve_check 守恒门(A8) → pivots(stage=cost 重新透视 A3) → 临时名导出+6sheet校验转正 → cost底稿/manifest留痕 → 全单元成功才 migrate_sku_batch(VIP全旬成功才迁移 A6)。run_writeback（2026-11-18 启用，承接影刀 look_sku.update_sql）：list_sku_batches(前两态) → sku_batch_units → 读底稿 oms_matched → writeback.prepare_rows(id去重) → writeback.writeback(dry_run 缺省 True=只统计+SQL预览不连库；False=executemany 1000/批+commit/rollback，4并发，失败聚合) → 真实回传全单元成功才 migrate_sku_batch(→已回传数据库/)；run_chuanyun（2026-11-18 启用，承接影刀 api_chuanyun.file_arrange）：读交付Excel氚云导入模板→五表主数据映射→主表+子表26字段→dry_run 缺省 True=零HTTP预览落 底稿/chuanyun_preview/；False=CreateBizObject 推送，成功文件移入 氚云导入成功/；ACTIVE_STAGES=(bill,match,cost,writeback,chuanyun) 五阶段全启用；capability_status 五能力 active 与入口一致（仅 full 仍 deferred 占位）"
     },
     "platform_registry": {
       "path": "core/platforms/registry.py",
@@ -38,11 +38,11 @@
     },
     "ui": {
       "path": "ui/index.html + ui/app.js",
-      "description": "vanilla 看板；对账总览含清空历史人工按钮(两步确认)；match/cost 页真实表单（批次选择+成本表路径+触发+watchPageJob 页内轮询终态+产物/迁移/留守提示，2026-11-18）；writeback/chuanyun 仍占位卡"
+      "description": "vanilla 看板（2026-11-18 UI 精简：五能力页 bill/match/cost/writeback/chuanyun 全部移除，操作全走 AI MCP 工具）；只剩四页 home/sources/jobs/settings；对账总览含清空历史人工按钮(两步确认，只清插件内记录不删输出目录文件)；AI 触发的作业在 jobs 页 pollJob 轮询展示；app.js 1099→619 行"
     },
     "skill_docs": {
       "path": "skills/recon_assist/",
-      "description": "AI 运行时说明书 + references/ 12 份平台漂移文档"
+      "description": "AI 运行时说明书 + references/ 14 份（11 平台漂移手册 + bill/sku/cost 三份方法论 SSOT）"
     }
   },
   "modules": {
@@ -82,7 +82,11 @@
         "matching.py",
         "allocation.py",
         "cost.py",
-        "writeback.py"
+        "writeback.py",
+        "chuanyun.py",
+        "summaries.py",
+        "envcheck.py",
+        "distcheck.py"
       ],
       "description": "pipeline_dormant=回传/全链路封存段（run_match 2026-11-17 搬回启用；cost 2026-11-18 按文件态新写 run_cost，未搬 dormant 整段——其依赖退役库表；启用其余段须过 storage.ALLOWED_TABLES 白名单评审）；money=全程整数分；exporters：match 阶段 DETAIL_SHEET_COLUMNS 31列严格裁列（内部三列仅底稿csv）；cost 阶段 COST_DETAIL_SHEET_COLUMNS 32列(31+特殊情况说明)/COST_SHOP 13/COST_PRODUCT 18/COST_MATCH 14(均无店铺编码)已接线 export_cost_result；采购单价走 PURCHASE_RAW_COLUMN 原始精度出口(raw_overrides，A2)；吊牌价元文本(B2C/VIP 4位小数、AKC 1位)；id 空值=空白单元格(A5 实测修正)"
     },
@@ -107,16 +111,19 @@
         "app.js",
         "styles.css"
       ],
-      "description": "9 页面 hash 路由；PAGE_LOADERS/bindAll；清空历史 clearHistoryFlow 两步确认"
+      "description": "4 页面 hash 路由（home/sources/jobs/settings，2026-11-18 精简：五能力操作页移除，操作全走 AI MCP 工具）；PAGE_LOADERS/bindAll；清空历史 clearHistoryFlow 两步确认"
     },
     "docs": {
       "files": [
         "README.md",
         "codemap/",
         "bugfixlog/",
-        "specs/"
+        "specs/",
+        "plans/",
+        "SECURITY.md",
+        "dependencies.md"
       ],
-      "description": "开发迭代文档体系（本索引所在）"
+      "description": "开发迭代文档体系（本索引所在）；SECURITY.md=凭据存储与分发纪律 SSOT；dependencies.md=依赖分发文档（SSOT=core/envcheck.py）"
     }
   },
   "task_lookup": {
@@ -194,10 +201,11 @@
     "clear_history": {
       "paths": [
         "actions.py",
-        "core/artifacts.py",
-        "ui/app.js"
+        "core/artifacts.py(clear_history)",
+        "core/joblog.py(clear_records 条件过滤)",
+        "ui/app.js(clearHistoryFlow)"
       ],
-      "note": "confirm=yes 门；scoped 条件只删命中批次保留副本/留痕"
+      "note": "2026-11-18 改版：只清插件内信息（作业留痕 logs/jobs.jsonl 支持 period/platform/shop_code 条件过滤 + downloads 副本仅全清时删），**输出目录批次/Excel/底稿/汇总簿一律保留不删**（batches_deleted 恒0，output_files_kept=True）；confirm=yes 门保留；清记录后批次清单仍可见（文件态扫目录，预期行为）；验证 scripts/verify_clear_history.py 39项含逐文件mtime零变化断言"
     },
     "dormant_revive": {
       "paths": [
@@ -217,7 +225,7 @@
         "skills/recon_assist/references/sku-match-methodology.md"
       ],
       "doc": "docs/specs/2026-11-17-sku-match-revival.md",
-      "note": "业务口径 SSOT=methodology；明细 Excel 31 列（内部字段 数据来源/店铺编码/成本缺失原因 仅底稿csv）；白名单差异=冲发出商品数量笔误修正/OMS数据时点漂移/字典更新；入口接线遗留见 spec 实施现状"
+      "note": "业务口径 SSOT=methodology；明细 Excel 31 列（内部字段 数据来源/店铺编码/成本缺失原因 仅底稿csv）；白名单差异=冲发出商品数量笔误修正/OMS数据时点漂移/字典更新；Q8 入口接线已于 2026-11-18 T4 补齐（run.py/actions 按 stage 分发、sku_match 接异步 Job、capability_status active、t4_mcp_jobs 4/4 ALL_OK）"
     },
     "cost_match": {
       "paths": [
@@ -231,6 +239,64 @@
       "doc": "docs/specs/2026-11-18-cost-match-stage.md + docs/plans/2026-11-18-cost-match-stage-plan.md",
       "note": "业务口径 SSOT=cost-match-methodology（含§5b用户确认）；标准成本透传禁重算(A1)/采购单价raw精度出口(A2)/重写后明细重新透视(A3)/明细正数仅透视取负(A4)/id空值=空白(A5实测修正,原记录字面None是pandas读表假象)/FR行级特例(A6)/读底稿csv+HALF_UP(A7)/守恒校验(A8)；VIP全旬成功才迁移、已匹配成本重跑原地覆盖；成本表缺省 结果根/{YYYY-MM}/物料成本_YYYYMM.xlsx"
     },
+    "writeback": {
+      "paths": [
+        "core/writeback.py(prepare_rows/resolve_label/sql_preview/writeback)",
+        "core/pipeline.py(run_writeback)",
+        "core/db.py(adb_connection 写路径连接上下文)",
+        "actions.py(writeback/start_recon dry_run)"
+      ],
+      "doc": "docs/specs/2026-11-18-writeback-stage.md",
+      "note": "承接影刀 look_sku.update_sql；SQL=UPDATE mid_jedz_datas SET bill_state='已对账',bill_period=中文账期 WHERE id=%s；dry_run 缺省1（用户决策：只做代码功能不真实更新库），真实落库须显式 dry_run=0+用户确认；成功迁移 已回传数据库/、失败留守；oms_matched 底稿已按 已匹配&历史未对账 双条件过滤"
+    },
+    "chuanyun": {
+      "paths": [
+        "core/chuanyun.py(load_template/fetch_master_data/fetch_account_balance/build_payload/push_biz_object/save_preview/主数据快照)",
+        "core/pipeline.py(run_chuanyun)",
+        "core/config.py(RECON_H3_ENGINE_CODE/SECRET + H3_SCHEMA_* 常量 + h3_config_status)",
+        "actions.py(chuanyun_sync/start_recon dry_run)"
+      ],
+      "doc": "docs/specs/2026-11-18-chuanyun-stage.md",
+      "note": "承接影刀 api_chuanyun.file_arrange；账单整理交付Excel「氚云导入模板」sheet→五张主数据表映射→店铺资金账单主表+子表26字段→CreateBizObject(IsSubmit=true)；dry_run 缺省1=零HTTP（主数据只读查询也不发），payload预览落 底稿/chuanyun_preview/，主数据快照 runtime/chuanyun_master.json；真实推送须显式 dry_run=0+用户确认；成功文件移入批次内 氚云导入成功/+manifest更新；已修复原脚本余额时序bug（先匹配账户再查余额）"
+    },
+    "summaries": {
+      "paths": [
+        "core/summaries.py(bill_pivot_summary/sku_pivot_summary/_read_sheet_fast calamine提速)",
+        "actions.py(bill_pivot_summary/sku_pivot_summary 同步工具)",
+        "config.json(mcp_tools 24→26)"
+      ],
+      "doc": "docs/specs/2026-11-18-pivot-summaries.md",
+      "note": "独立透视汇总服务（2026-11-18 新增，承接影刀 cost_match.final_bill_pivot/final_pivot）：纯本地聚合同步工具，不连库不推氚云不改批次产物；账单汇总按8列结构识别透视sheet（修复影刀sheet_name=1位置假设）concat→账单整理透视汇总表；SKU汇总5 sheet三张透视concat+收退款按店铺×订单年月outer merge→4 sheet汇总簿；输出 results/{YYYY-MM}/汇总/（时间戳不覆盖）+downloads副本；SKU缺省三态全扫（同批次不重复）、VIP多旬逐份；calamine引擎大簿秒级读、回落openpyxl流式；排除~$与汇总/防自吞"
+    },
+    "envcheck": {
+      "paths": [
+        "core/envcheck.py(DEPENDENCIES SSOT/env_status/feature_readiness)",
+        "actions.py(env_status 同步工具)",
+        "skills/recon_assist/environment_checks.yaml(宿主 env_check/启动体检清单 8包)",
+        "requirements.txt(人工安装参考)",
+        "docs/dependencies.md(分发用户依赖文档)"
+      ],
+      "doc": "docs/dependencies.md",
+      "note": "运行环境自检与依赖分发（2026-11-18 新增，mcp_tools 26→27）：三层依赖 required(pandas/numpy/openpyxl)/conditional(mysql-connector-python=ADB、requests=氚云)/optional(xlsxwriter/pyarrow/python-calamine 均有自动回落)；六能力就绪矩阵 ready/degraded/not_ready（conditional 缺只降级真实路径，dry-run 不受影响）；install_guidance 指向宿主 venv_install（禁 Bash pip）；credentials 段报 ADB/氚云环境变量就绪（不暴露口令）；三处清单一致性由 verify_envcheck.py 断言；宿主 discover_skill_environment_checks+validate_registry_entry 实测 ALL_VALID"
+    },
+    "distcheck": {
+      "paths": [
+        "core/distcheck.py(scan_workspace/scan_git_history/dist_check/PACKAGING_EXCLUDES)",
+        "actions.py(dist_check 同步工具)",
+        "docs/SECURITY.md(凭据存储架构与分发纪律 SSOT)"
+      ],
+      "doc": "docs/SECURITY.md",
+      "note": "分发前安全自检（2026-11-18 新增，mcp_tools 27→28）：凭据只存本机环境变量（进程环境→HKCU注册表兜底），插件目录零凭据文件；运行时数据（settings/plugin.db/results/downloads/logs/氚云主数据快照）全在 data/extensions/recon_workbench/（插件目录外）；扫描=本机真实凭据值子串+硬编码口令样赋值+PEM私钥+运行时文件混入，工作区+git全历史双通道，命中打码不回显；verdict=safe/caution/blocked + packaging_excludes 打包排除清单；审计实测工作区139文件与git 16 commits 凭据0命中（唯一残留=未跟踪ssh_known_hosts公钥文件，caution级）；验证 scripts/verify_distcheck.py 24项含假秘密注入必须blocked测试（夹具运行时拼接防自触发）"
+    },
+    "overall_review": {
+      "paths": [
+        "docs/specs/2026-11-18-overall-review.md",
+        "core/pipeline.py(DEFERRED_STAGES 仅 full)",
+        "core/allocation.py", "core/matching.py", "core/cost.py", "storage.py"
+      ],
+      "doc": "docs/specs/2026-11-18-overall-review.md",
+      "note": "2026-11-18 总体 review（superpowers 分pass自审）：28工具接线全对齐、dry_run双层门完好；12个零引用死函数移除（run_full/apply_advice/verify_direction/_subset_sum_fen/_brand_code/cost_summary_by_advice/period_from_label/_read_parquet/apply_biz_codes/ensure_schema/vacuum/upsert_rows），每处留注释说明现行口径防误复活；DEFERRED_STAGES 收窄为仅 full；过时「暂缓」表述全量对齐（pipeline/actions/config/SKILL）；4个验证脚本过时断言修正；226项验证全PASS"
+    },
     "regression": {
       "paths": [
         "scripts/verify_export_baseline.py(工作区)",
@@ -243,7 +309,16 @@
         "scripts/run_cost_smoke_hyk.py(T2 HYK成本冒烟+锚点)",
         "scripts/test_cost_migration.py(T3 迁移状态机失败注入11项)",
         "scripts/t4_mcp_jobs.py(T4 MCP通道真实触发cost/match Job)",
-        "scripts/verify_cost_match.py(T5 全平台成本匹配 vs 影刀基准52份+守恒+回传逐格)"
+        "scripts/verify_cost_match.py(T5 全平台成本匹配 vs 影刀基准52份+守恒+回传逐格)",
+        "scripts/verify_writeback.py(T7 回传模块38项：SQL口径/dry-run不连库/FakeConn分批commit-rollback/迁移状态机，不连真实库)",
+        "scripts/t7_writeback_dryrun.py(T7 MCP通道真实writeback Job恒dry-run：全账期172040条+HYK303条+零迁移零写库 4/4 ALL_OK)",
+        "scripts/verify_chuanyun.py(T8 氚云模块62项：主表/子表26字段逐字段核对/微信爱库存分支/四道校验门/dry-run零HTTP证明/FakeResp推送序列/移动留守，零真实HTTP)",
+        "scripts/t8_chuanyun_dryrun.py(T8 MCP通道真实chuanyun Job恒dry-run：全账期41批次60文件50预检通过+HYK单批+零推送零移动 4/4 ALL_OK)",
+        "scripts/verify_summaries.py(T9 汇总工具38项：8列/4sheet口径/订单年月outer merge/VIP多旬/自吞防护/过滤/归一出口)",
+        "scripts/t9_summaries.py(T9 MCP真实2026-10数据：账单386行/SKU四表120+35645+54222+140行，HYK独立重算一致，下载可达 6/6 ALL_OK)",
+        "scripts/verify_envcheck.py(环境自检25项：三处依赖清单一致性/就绪矩阵纯函数/真实探测/归一出口/28工具声明)",
+        "scripts/verify_clear_history.py(清空改版39项：条件/全清只动留痕+副本、输出目录逐文件mtime零变化、confirm门、UI四页精简静态检查)",
+        "scripts/verify_distcheck.py(分发安全24项：真实目录凭据0命中/git历史0命中/假秘密注入必须blocked/打码不回显/运行时文件检出/28工具声明)"
       ],
       "note": "全部数值列合计比对防假绿（含毛利率列；基准文本数值列统一转float）；vip 大文件后台跑落日志；2026-11-18 实测 38 店三项校验全OK、VIP三旬+AKC SKU基准 ALL_OK、差异均归因数据漂移"
     },

@@ -188,17 +188,43 @@ def _append_or_replace(rec: dict[str, Any]) -> None:
         raise
 
 
-def clear_records() -> int:
-    """清空作业留痕（用户「清空历史」动作）。返回清掉的条数；文件保留为空。"""
+def clear_records(*, period: str = "", platform: str = "", shop_code: str = "") -> int:
+    """清空作业留痕（用户「清空历史」动作）。返回清掉的条数。
+
+    2026-11-18 改版：清空只动插件内信息，不删输出目录文件。
+    给 period/platform/shop_code 任一时只删命中条件的记录（其余保留）；
+    全空则全清（文件保留为空）。整文件原子重写，与 _append_or_replace 同口径。
+    """
     path = log_path()
+    scoped = bool(period or platform or shop_code)
     with _LOCK:
-        n = len(read_records())
-        if path.is_file():
+        recs = read_records(limit=0)  # 新→旧
+        if not scoped:
+            n = len(recs)
+            if path.is_file():
+                try:
+                    path.write_text("", encoding="utf-8")
+                except OSError:
+                    pass
+            return n
+        keep: list[dict[str, Any]] = []
+        removed = 0
+        for r in recs:
+            hit = ((not period or str(r.get("period") or "") == period)
+                   and (not platform or str(r.get("platform") or "") == platform)
+                   and (not shop_code or str(r.get("shop_code") or "") == shop_code))
+            if hit:
+                removed += 1
+            else:
+                keep.append(r)
+        if removed and path.is_file():
+            body = "".join(json.dumps(r, ensure_ascii=False, default=str) + "\n"
+                           for r in reversed(keep))  # 还原追加写顺序（旧→新）
             try:
-                path.write_text("", encoding="utf-8")
+                path.write_text(body, encoding="utf-8")
             except OSError:
-                pass
-    return n
+                return 0
+        return removed
 
 
 def stats() -> dict[str, Any]:

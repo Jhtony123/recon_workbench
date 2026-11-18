@@ -25,8 +25,13 @@
 
 | 日期 | spec | 状态 |
 |------|------|------|
-| 2026-11-17 | [SKU 对账启用（账单追账 · 不带成本第一步）](./2026-11-17-sku-match-revival.md) | confirmed（Q1–Q8 全部确认；开发未开始） |
-| 2026-11-16 | [全流程 workflow 与产物目录状态机（年月/账单整理/sku匹配）](./2026-11-16-sku-workflow-and-output-layout.md) | confirmed（目录改版+10月已实施；SKU/成本/回传/氚云口径确认、实现暂缓） |
+| 2026-11-18 | [总体 review：实施收尾对齐+接线/文档/死代码审查](./2026-11-18-overall-review.md) | implemented（226 项验证全 PASS；12 个死函数清理） |
+| 2026-11-18 | [氚云对接阶段启用（chuanyun stage）](./2026-11-18-chuanyun-stage.md) | implemented（dry-run 缺省；真实推送须显式 dry_run=0+用户确认） |
+| 2026-11-18 | [数据库回传阶段启用（writeback stage）](./2026-11-18-writeback-stage.md) | implemented（dry-run 缺省；真实落库须显式 dry_run=0+用户确认） |
+| 2026-11-18 | [独立透视汇总工具（bill/sku_pivot_summary）](./2026-11-18-pivot-summaries.md) | implemented |
+| 2026-11-18 | [实际成本匹配启用（stage=cost）](./2026-11-18-cost-match-stage.md) | implemented（T1–T6；A5 实测修正） |
+| 2026-11-17 | [SKU 对账启用（账单追账 · 不带成本第一步）](./2026-11-17-sku-match-revival.md) | implemented（Q8 入口接线已于 2026-11-18 T4 补齐销账） |
+| 2026-11-16 | [全流程 workflow 与产物目录状态机（年月/账单整理/sku匹配）](./2026-11-16-sku-workflow-and-output-layout.md) | implemented（五阶段全部启用；回传/氚云恒缺省 dry-run） |
 | 2026-11-16 | [内置规则剥离为默认可编辑规则](./2026-11-16-builtin-rules-extraction.md) | implemented |
 | 2026-11-16 | [总览页清空历史控件 + 细粒度清理工具](./2026-11-16-clear-history-ui-and-scoped-tool.md) | implemented |
 | 2026-11-16 | [zip 直入 + 输出目录新命名 + 特殊平台口径](./2026-11-16-zip-input-and-dir-naming.md) | implemented |

@@ -3,7 +3,8 @@
 约定：导出 run(*, progress, params=None, ctx=None) -> dict
 
 params:
-  stage         bill（唯一可执行）/ match|cost|writeback|chuanyun|full（占位暂缓，直接返回 deferred）
+  stage         bill|match|cost|writeback|chuanyun（可执行；writeback/chuanyun
+                缺省 dry_run=1 预检，不写库/不向氚云发请求）/ full（占位暂缓 deferred）
   platform      平台标识或中文名（taobao / douyin / jd / pdd ...）
   shop_code     店铺编码
   shop_name     店铺名称（缺省用 shop_code）
@@ -132,6 +133,30 @@ def run(
                 platform=str(params.get("platform") or ""),
                 shop_code=str(params.get("shop_code") or ""),
                 include_tax=str(params.get("include_tax", "0")) in ("1", "true", "True"),
+                progress=prog,
+            )
+        elif stage == "writeback":
+            # 2026-11-18 启用：缺省 dry-run 预检（不连库不写库）；
+            # 真实落库须显式 dry_run=0（用户确认后才允许）。
+            res = pipeline.run_writeback(
+                period=str(params.get("period") or ""),
+                bill_batch_id=str(params.get("bill_batch_id") or ""),
+                platform=str(params.get("platform") or ""),
+                shop_code=str(params.get("shop_code") or ""),
+                s_date=str(params.get("s_date") or ""),
+                e_date=str(params.get("e_date") or ""),
+                dry_run=str(params.get("dry_run", "1")) not in ("0", "false", "False"),
+                progress=prog,
+            )
+        elif stage == "chuanyun":
+            # 2026-11-18 启用：缺省 dry-run 预检（零 HTTP，不向氚云发送任何请求）；
+            # 真实推送须显式 dry_run=0（用户确认后才允许）。
+            res = pipeline.run_chuanyun(
+                period=str(params.get("period") or ""),
+                bill_batch_id=str(params.get("bill_batch_id") or ""),
+                platform=str(params.get("platform") or ""),
+                shop_code=str(params.get("shop_code") or ""),
+                dry_run=str(params.get("dry_run", "1")) not in ("0", "false", "False"),
                 progress=prog,
             )
         else:

@@ -1,0 +1,23 @@
+# recon_workbench 运行依赖（随插件分发；2026-11-18）
+#
+# 安装方式（Desktop Agent 用户）：让 AI 调 venv_install 安装到 sidecar 运行时，
+# 或先调 recon_workbench__env_status 查看缺什么再按提示安装。
+# 不要直接 pip install 到系统 Python —— 插件跑在 Desktop Agent 的运行时里。
+#
+# 版本下限按本机实测通过版本给出（pandas 3.0.4 / numpy 2.5.0 / openpyxl 3.1.5 /
+# requests 2.34.2 / mysql-connector-python 26.10.0 / python-calamine 0.9.1）；
+# 更低版本未验证，代码未用 3.x 独有 API，pandas>=2.0 理论可用但不保证。
+
+# ---- 核心必需（账单整理/SKU对账/成本匹配/透视汇总都要）----
+pandas>=2.0
+numpy>=1.24
+openpyxl>=3.1          # Excel 读写兜底引擎（写回落 openpyxl、汇总读回落流式）
+
+# ---- 条件依赖（按启用的功能安装；缺失时相关功能报可读错误，不影响其它功能）----
+mysql-connector-python>=8.0   # SKU对账取数 / 数据库回传（巨益 ADB）；纯本地功能不需要
+requests>=2.28                # 氚云真实推送（OpenAPI）；dry-run 预检零 HTTP 不需要
+
+# ---- 可选加速（全部有自动回落，不装不影响功能正确性）----
+xlsxwriter>=3.1        # Excel 写引擎首选；缺失回落 openpyxl
+pyarrow>=14.0          # 底稿 parquet 格式；缺失自动落 CSV（utf-8-sig，口径一致）
+python-calamine>=0.2   # 大簿秒级读（VIP 67MB 级汇总）；缺失回落 openpyxl 流式（分钟级）

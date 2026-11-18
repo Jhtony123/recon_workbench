@@ -75,18 +75,9 @@ def write_connection(
         conn.close()
 
 
-def ensure_schema(conn: sqlite3.Connection) -> None:
-    sql = _load_schema_sql()
-    if sql.strip():
-        conn.executescript(sql)
-
-
-def vacuum(path: Path | None = None, *, plugin_name: str | None = None) -> int:
-    """清库后回收空间（DROP 十张表后 db 文件不会自己变小）。返回收缩后字节数。"""
-    with write_connection(path, plugin_name=plugin_name) as conn:
-        conn.execute("VACUUM")
-    target = path or db_path(plugin_name)
-    return target.stat().st_size if target.is_file() else 0
+# 注：ensure_schema / vacuum / upsert_rows 已于 2026-11-18 总体 review 移除（死代码）：
+# write_connection 建连时已 executescript(schema.sql)；单表店铺映射走 upsert_row；
+# 宿主 db_maintenance 负责库维护。需要时按 git 历史取回。
 
 
 _COL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
@@ -171,21 +162,4 @@ def upsert_row(
         )
 
 
-def upsert_rows(
-    table: str,
-    rows: list[dict[str, Any]],
-    *,
-    plugin_name: str | None = None,
-    unique_keys: list[str] | None = None,
-) -> int:
-    n = 0
-    for row in rows:
-        if isinstance(row, dict) and row:
-            upsert_row(
-                table,
-                row,
-                plugin_name=plugin_name,
-                unique_keys=unique_keys,
-            )
-            n += 1
-    return n
+

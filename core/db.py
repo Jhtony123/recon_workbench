@@ -144,6 +144,23 @@ def _connect():
 
 
 @contextmanager
+def adb_connection() -> Iterator[Any]:
+    """连接上下文：异常路径也保证关闭（修复原脚本连接泄漏）。
+
+    回传等写路径需要 conn.commit()/rollback()（原脚本 executemany+commit 口径），
+    只读查询用 adb_cursor() 即可。
+    """
+    conn = _connect()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@contextmanager
 def adb_cursor() -> Iterator[Any]:
     """游标上下文：异常路径也保证关闭（修复原脚本连接泄漏）。"""
     conn = _connect()

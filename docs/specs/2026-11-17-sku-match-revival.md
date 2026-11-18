@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | date | 2026-11-17 |
-| status | implemented（2026-11-17 启用并三轮精修对齐基准；2026-11-18 全平台40批次回归+三项金额校验38/38 OK；入口接线遗留见文末「实施现状」） |
+| status | implemented（2026-11-17 启用并三轮精修对齐基准；2026-11-18 全平台40批次回归+三项金额校验38/38 OK；Q8 入口接线已于 2026-11-18 T4 补齐，见文末「实施现状」） |
 | scope | core/pipeline.py、core/matching.py、core/allocation.py、core/pivots.py、core/db.py、core/artifacts.py、run.py、actions.py、config.json、UI；参照影刀 look_sku.py / main.py |
 
 ## 背景与问题
@@ -21,7 +21,8 @@
   直接运行会被白名单闸门拦下——须按「结果落文件」方案改造后启用。
 
 本 spec 范围：**只启用 SKU 对账（match，不带成本）**。成本匹配 / 数据库回传 / 氚云回传
-仍 deferred，口径沿用 2026-11-16 spec，届时另立 spec。
+当时仍 deferred（2026-11-18 注：三者已分别由 cost-match / writeback / chuanyun 三份
+11-18 spec 启用，恒缺省 dry-run）。
 
 ## 业务逻辑基线（影刀源码精读结论，迁移 SSOT）
 
@@ -146,12 +147,11 @@ cost_match.py / trade_no_fill.py / oms_shop.py。逐条口径：
   货款合计=分摊合计、与账单整理 bill_goods 收/退合计对平（含京东三源）；
 - 明细裁列 31 列（e14fab7）；回归/归因/校验脚本入库（08c620b、55102f3）。
 
-**遗留（Q8 入口接线未完全落地）**：
-- run.py stage=match 虽过 ACTIVE_STAGES 门，但后续仍统一调 run_bill（未按 stage 分发到
-  run_match）；actions.start_recon 同样硬编码 stage=bill 且强制 file_paths；
-  sku_match() MCP 工具仍返回 deferred；capability_status() 仍把 match 报为 deferred；
-  config.json UI 页标题仍是「SKU对账（暂缓）」。
-- **当前 match 真执行通道 = 直接调 core.pipeline.run_match**（scripts/run_match_oct_all.py
-  批量入口，参数取自账单整理批次 manifest）。
-- 补齐 Q8 需：run.py/actions 按 stage 分发、sku_match 工具接 run_match（输入=bill_batch_id）、
-  capability_status/UI/config.json 状态同步——另起小任务实施，勿在文档层假装已接。
+**Q8 入口接线（已于 2026-11-18 T4 补齐销账）**：
+- run.py 按 stage 分发（bill/match/cost/writeback/chuanyun），不再统一调 run_bill；
+- actions.start_recon 按 stage 分发，sku_match() MCP 工具接异步 Job（bill_batch_id 或
+  period+platform+shop_code 定位批次）；capability_status() match=active；
+- config.json UI 已于 2026-11-18 精简为四页（home/sources/jobs/settings），
+  五能力操作页整体移除，操作全走 AI MCP 工具（见 codemap entry_points.ui）；
+- MCP 通道真实触发验证：scripts/t4_mcp_jobs.py 4/4 ALL_OK。
+- 历史批量入口 scripts/run_match_oct_all.py 保留作回归脚本。

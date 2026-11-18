@@ -586,90 +586,33 @@ def parse_dir_name(name: str) -> dict[str, str]:
 
 
 def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") -> dict[str, Any]:
-    """清空账单整理历史（2026-11-16 用户需求：结果下载完即可清理，全在本地）。
+    """清空历史记录（2026-11-18 改版：**只清插件内信息，绝不删输出目录文件**）。
 
-    清理范围（只动插件自己的产物，绝不碰用户其它文件）：
-      · 默认 results/ 与当前自定义 results 根目录下的**批次目录**
-        （目录名匹配 _DIR_RE/_DIR_RE_NEW，或含 manifest.json —— 双重判据防误删手工目录）
-      · downloads/ 下的下载副本（该目录为插件专用）
-      · logs/jobs.jsonl 作业留痕（joblog.clear_records）
-    保留：店铺映射（数据库唯一表）、rules/ 规则文件、settings.json。
-    切换过自定义路径时两个根目录都清，防旧历史残留。
+    用户需求：清空记录 ≠ 删除产出。结果目录（默认 results/ 或自定义 results_dir）
+    下的批次目录、交付 Excel、底稿、汇总簿一律**原样保留**——那是财务产出，
+    删除与否由用户自己在资源管理器决定，插件不代劳。
 
-    细粒度（2026-11-16 用户需求，AI 可按条件清理）：给 period/platform/shop_code
-    任一时只删**命中条件的批次目录**（按 manifest 与目录名双解析匹配），
-    downloads 副本与作业留痕**保留**（无法可靠归属到单批次）；全空则全清。
+    清理范围（全部是插件运行时目录 data/extensions/recon_workbench/ 内的信息）：
+      · logs/jobs.jsonl 作业留痕（joblog.clear_records，支持条件过滤）
+      · downloads/ 下载副本（插件专用缓存目录，非用户输出目录；仅全清时删）
+    保留：输出目录全部文件、店铺映射（数据库唯一表）、rules/ 规则、settings.json。
+
+    细粒度：给 period/platform/shop_code 任一时只删**命中条件的作业留痕**，
+    downloads 副本保留；全空则留痕全清 + downloads 副本清空。
+    批次清单是扫输出目录得来的（文件态），清记录后批次仍可见——这是预期行为。
     """
-    import shutil
-
     from . import joblog
-    from .config import default_results_dir, results_root, runtime_dir
+    from .config import runtime_dir
     from .platforms.registry import parse_platform
 
     scoped = bool(period or platform or shop_code)
     want_platform = parse_platform(platform) if platform else ""
 
-    roots: list[Path] = []
-    for r in (default_results_dir(), results_root()):
-        r = Path(r)
-        if r not in roots:
-            roots.append(r)
-
-    deleted: list[str] = []
-    kept: list[str] = []
     errors: list[str] = []
-    for root in roots:
-        if not root.is_dir():
-            continue
-        for d in iter_batch_dirs(root):
-            # 新格式目录名可能撞用户手工目录：仅当平台名可识别或含 manifest 才认作批次
-            m_new = _DIR_RE_NEW.match(d.name)
-            known_display = False
-            if m_new:
-                from .platforms.registry import DISPLAY_TO_PLATFORM
-
-                known_display = m_new.group("display") in DISPLAY_TO_PLATFORM
-            is_batch = (bool(_DIR_RE.match(d.name))
-                        or bool(_DIR_RE_VIP.match(d.name))
-                        or (bool(m_new) and (known_display or manifest_path_for(d).is_file()))
-                        or manifest_path_for(d).is_file())
-            if not is_batch:
-                kept.append(str(d))
-                continue
-            if scoped:
-                meta = parse_dir_name(d.name)
-                man = read_manifest(manifest_path_for(d))
-                eff_period = str(man.get("period") or meta.get("period") or "")
-                eff_platform = str(man.get("platform") or meta.get("platform") or "")
-                eff_shop = str(man.get("shop_code") or meta.get("shop_code") or "")
-                if period and eff_period != period:
-                    continue
-                if want_platform and eff_platform != want_platform:
-                    continue
-                if shop_code and eff_shop != shop_code:
-                    continue
-            try:
-                shutil.rmtree(d)
-                deleted.append(d.name)
-            except OSError as exc:
-                errors.append(f"{d.name}: {exc}")
-        # 删完批次后回收空的 账单整理/ 与年月层（只删空目录，不碰 sku匹配/）
-        for d in sorted(root.iterdir()):
-            if d.is_dir() and _MONTH_RE.match(d.name):
-                sub = d / BILL_DIRNAME
-                if sub.is_dir() and not any(sub.iterdir()):
-                    try:
-                        sub.rmdir()
-                    except OSError:
-                        pass
-                if not any(d.iterdir()):
-                    try:
-                        d.rmdir()
-                    except OSError:
-                        pass
+    log_removed = joblog.clear_records(
+        period=period, platform=want_platform or platform, shop_code=shop_code)
 
     dl_removed = 0
-    log_removed = 0
     if not scoped:
         dl_dir = runtime_dir() / "downloads"
         if dl_dir.is_dir():
@@ -680,15 +623,15 @@ def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") 
                         dl_removed += 1
                     except OSError as exc:
                         errors.append(f"downloads/{f.name}: {exc}")
-        log_removed = joblog.clear_records()
     return {
-        "batches_deleted": len(deleted),
-        "batches": deleted,
+        # 兼容旧键名（老 UI/脚本可能读）：恒 0 —— 输出目录文件一个不删
+        "batches_deleted": 0,
+        "batches": [],
+        "output_files_kept": True,
         "downloads_removed": dl_removed,
         "joblog_removed": log_removed,
-        "kept_dirs": kept,
+        "kept_dirs": [],
         "errors": errors,
-        "roots": [str(r) for r in roots],
         "scope": {"period": period, "platform": want_platform or platform, "shop_code": shop_code},
         "scoped": scoped,
     }
@@ -833,10 +776,8 @@ def _read_table(path: Path, *, int_cols: Sequence[str] = ()) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# 向后兼容旧函数名
-def _read_parquet(path: Path, *, int_cols: Sequence[str] = ()) -> pd.DataFrame:
-    return _read_table(path, int_cols=int_cols)
-
+# 注：旧别名 _read_parquet 已于 2026-11-18 总体 review 移除（无调用方）；
+# 读表格一律 _read_table / read_detail / read_goods。
 
 #: 各表格的整数列（CSV 读回时必须显式转 int64，否则金额口径会漂成字符串）
 DETAIL_INT_COLS = ("receipt_fen", "refund_fen", "net_fen", "source_row")

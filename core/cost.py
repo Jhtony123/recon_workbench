@@ -17,7 +17,7 @@ import pandas as pd
 
 from .config import ADVICE_OFFSET_SHIP, MATCHED, UNMATCHED
 from .errors import BillParseError
-from .money import CENT, from_fen, safe_int, to_fen
+from .money import CENT, safe_int, to_fen
 
 MODE_SKU = "sku"
 MODE_STYLE = "style"
@@ -478,12 +478,9 @@ _ENRICH_TEXT_COLUMNS: tuple[tuple[str, str, bool], ...] = (
 )
 
 
-def _brand_code(value: Any) -> str:
-    """品牌中英文名 → 报表简码；字典没有的回落空串（原脚本 .get(x) 会得 None，此处不写 'None'）。"""
-    key = str(value or "").strip()
-    if not key or key.lower() in ("nan", "none"):
-        return PLACEHOLDER_BRAND
-    return BRAND_DICT.get(key, "")
+# 注：_brand_code 已于 2026-11-18 总体 review 移除（死代码）：品牌映射现行口径在
+# enrich_from_db 内直接 BRAND_DICT.get（缺失保 NaN，透视层 fillna("未知")），
+# 与本函数「回落占位符」语义不同，勿复活。
 
 
 def enrich_from_db(
@@ -620,23 +617,5 @@ def enrich_from_db(
     return out
 
 
-def cost_summary_by_advice(df: pd.DataFrame) -> list[dict]:
-    """按处理意见汇总成本（管理页成本卡片的载荷）。"""
-    if df is None or df.empty:
-        return []
-    g = df.groupby("处理意见", as_index=False).agg(
-        rows=("订单编号", "size"),
-        qty=("数量", "sum"),
-        std_cost_fen=("标准成本", "sum"),
-        ship_cost_fen=("发货成本", "sum"),
-        allocated_fen=("货款分摊金额", "sum"),
-        settle_fen=("结算金额", "sum"),
-    )
-    rows = []
-    for rec in g.to_dict(orient="records"):
-        rec["std_cost_yuan"] = float(from_fen(rec.get("std_cost_fen")))
-        rec["ship_cost_yuan"] = float(from_fen(rec.get("ship_cost_fen")))
-        rec["allocated_yuan"] = float(from_fen(rec.get("allocated_fen")))
-        rec["settle_yuan"] = float(from_fen(rec.get("settle_fen")))
-        rows.append(rec)
-    return rows
+# 注：cost_summary_by_advice（旧管理页成本卡片载荷）已于 2026-11-18 总体 review
+# 移除（死代码）：能力页已整体下线，成本汇总走交付 Excel 透视与 sku_pivot_summary。
