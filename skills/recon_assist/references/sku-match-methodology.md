@@ -186,7 +186,9 @@ WHERE bill_date >= start AND bill_date < end AND shop_code = 店铺编号
 ## 7. 输出与透视口径
 
 每店一份 6-sheet Excel：店铺数据透视 / 款号数据透视 / 匹配透视 / 收款匹配 / 退款匹配 / 已匹配的巨益单号。
-- 明细 32 标准列 + 数据来源 + 店铺编码（core/matching.py DETAIL_OUTPUT_COLUMNS）；
+- 明细 Excel **31 列**（core/exporters.py DETAIL_SHEET_COLUMNS 严格裁列，尾列=处理意见；
+  2026-11-18 用户确认：数据来源/店铺编码/成本缺失原因 为内部字段，仅留 底稿/match_detail.csv，
+  内部计算仍用 core/matching.py DETAIL_OUTPUT_COLUMNS 全列）；
 - 透视只取特定意见：收款侧 **结转成本**；退款侧 **冲成本** 与 **冲发出商品** 分列
   （款号/店铺透视退款段处理意见显示「冲成本/冲发出商品」，标准成本=冲成本部分，冲发出商品=另一列）；
 - 收款正数、退款负数；毛利=分摊金额-标准成本；毛利率 round(4)，分母 0→0（插件以 bp 存）；

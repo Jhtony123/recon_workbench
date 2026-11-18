@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | date | 2026-11-17 |
-| status | confirmed（2026-11-17 用户确认 Q1–Q8 全部口径；开发未开始） |
+| status | implemented（2026-11-17 启用并三轮精修对齐基准；2026-11-18 全平台40批次回归+三项金额校验38/38 OK；入口接线遗留见文末「实施现状」） |
 | scope | core/pipeline.py、core/matching.py、core/allocation.py、core/pivots.py、core/db.py、core/artifacts.py、run.py、actions.py、config.json、UI；参照影刀 look_sku.py / main.py |
 
 ## 背景与问题
@@ -72,7 +72,10 @@ cost_match.py / trade_no_fill.py / oms_shop.py。逐条口径：
 
 ### B3 输出（每店一份 6-sheet Excel）
 店铺数据透视 / 款号数据透视 / 匹配透视 / 收款匹配 / 退款匹配 / 已匹配的巨益单号。
-明细 32 标准列 + 数据来源 + 店铺编码（core/matching.py DETAIL_OUTPUT_COLUMNS 已对齐）。
+明细 Excel **31 列**（exporters.DETAIL_SHEET_COLUMNS 严格裁列，尾列=处理意见）。
+~~原「32 标准列 + 数据来源 + 店铺编码」附加列白名单~~ **2026-11-18 用户确认作废**：
+数据来源/店铺编码/成本缺失原因 是插件内部字段（分摊分组/成本诊断用），全平台影刀基准
+实测均 31 列，内部字段仅保留在 底稿/match_detail.csv，不进 Excel。
 透视口径：收款正数、退款负数；毛利=分摊金额-标准成本；毛利率 round(4)，分母 0→0；
 退款侧另列 冲发出商品数量/金额；全 0 行删除。
 
@@ -131,3 +134,24 @@ cost_match.py / trade_no_fill.py / oms_shop.py。逐条口径：
 - 数据库回传（update_sql 等价，显式确认门 + 成功迁移/失败留守状态机）→ 下一份 spec；
 - 氚云模板导出、跨店合并大表工具 → 独立任务；
 - 影刀源码中其余疑似笔误如回归中发现，登记 bugfixlog 后再定修正口径。
+
+## 实施现状（2026-11-18 更新）
+
+**已完成**：
+- run_match 全链启用（ACTIVE_STAGES=(bill, match)），10 月 40 批次（除 VIP 单独跑）实测；
+- 与影刀 10 月基准（`桌面\2026.10月账单\SKU匹配汇总-已有结果可作为对照验证`）逐 sheet 对齐：
+  12 店完全一致；其余差异经行级归因均为 **OMS 数据时点漂移**（单据状态/字典/数量事后更新、
+  基准生成后新录单据）+ 白名单笔误修正（冲发出商品数量 84 行），无逻辑回归；
+- 三项金额校验 38/38 OK（scripts/verify_match_totals.py）：秒退逐单收付货款相等、
+  货款合计=分摊合计、与账单整理 bill_goods 收/退合计对平（含京东三源）；
+- 明细裁列 31 列（e14fab7）；回归/归因/校验脚本入库（08c620b、55102f3）。
+
+**遗留（Q8 入口接线未完全落地）**：
+- run.py stage=match 虽过 ACTIVE_STAGES 门，但后续仍统一调 run_bill（未按 stage 分发到
+  run_match）；actions.start_recon 同样硬编码 stage=bill 且强制 file_paths；
+  sku_match() MCP 工具仍返回 deferred；capability_status() 仍把 match 报为 deferred；
+  config.json UI 页标题仍是「SKU对账（暂缓）」。
+- **当前 match 真执行通道 = 直接调 core.pipeline.run_match**（scripts/run_match_oct_all.py
+  批量入口，参数取自账单整理批次 manifest）。
+- 补齐 Q8 需：run.py/actions 按 stage 分发、sku_match 工具接 run_match（输入=bill_batch_id）、
+  capability_status/UI/config.json 状态同步——另起小任务实施，勿在文档层假装已接。

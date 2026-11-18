@@ -1,15 +1,16 @@
 {
   "meta": {
     "name": "recon_workbench Code Map",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "generated": "2026-11-16",
+    "updated": "2026-11-18",
     "description": "对账工作台插件代码结构机器可读索引（参照 AI_RPA docs/codemap 规范）",
     "reference_project": "E:/AIcoding_project/codex/AI_RPA/docs/codemap"
   },
   "entry_points": {
     "job_entry": {
       "path": "run.py",
-      "description": "Extension Job 入口；stage=bill 真执行，match/cost/writeback/chuanyun/full 返回 deferred 占位"
+      "description": "Extension Job 入口；stage=bill 真执行。⚠️ match 已在 ACTIVE_STAGES 但 run.py 仍统一调 run_bill（Q8 入口接线遗留，见 specs/2026-11-17 实施现状）；当前 match 真执行通道=直接调 core.pipeline.run_match（scripts/run_match_oct_all.py）；cost/writeback/chuanyun/full 返回 deferred 占位"
     },
     "mcp_actions": {
       "path": "actions.py",
@@ -21,7 +22,7 @@
     },
     "orchestrator": {
       "path": "core/pipeline.py",
-      "description": "run_bill → 唯品会多旬分发(_vip_expand_xuns/_vip_run_xuns) → _run_bill_single；jd 只给 period 自动推上月末~月末"
+      "description": "run_bill → 唯品会多旬分发(_vip_expand_xuns/_vip_run_xuns) → _run_bill_single；jd 只给 period 自动推上月末~月末。run_match（2026-11-17 启用，不带成本）：bill_goods → split_bill → match_all → 分摊对平门 → finalize → 产品/成本回填 → pivots → 落 sku匹配/未匹配成本/{批次}；ACTIVE_STAGES=(bill,match)；capability_status() 的 match 状态表述待与入口接线同步"
     },
     "platform_registry": {
       "path": "core/platforms/registry.py",
@@ -83,7 +84,7 @@
         "cost.py",
         "writeback.py"
       ],
-      "description": "pipeline_dormant=SKU对账/成本/回传封存算法（启用须过 storage.ALLOWED_TABLES 白名单评审）；money=全程整数分"
+      "description": "pipeline_dormant=成本/回传/全链路封存段（run_match 已于 2026-11-17 搬回 pipeline.py 启用；启用其余段须过 storage.ALLOWED_TABLES 白名单评审）；money=全程整数分；exporters.DETAIL_SHEET_COLUMNS=收/退款明细基准31列严格裁列（2026-11-18，内部三列仅留底稿csv）"
     },
     "rules": {
       "files": [
@@ -205,13 +206,29 @@
       ],
       "note": "启用=方案评审：ALLOWED_TABLES 显式加表或改落 artifacts"
     },
+    "sku_match": {
+      "paths": [
+        "core/pipeline.py(run_match)",
+        "core/matching.py",
+        "core/allocation.py",
+        "core/pivots.py",
+        "core/cost.py",
+        "core/exporters.py(DETAIL_SHEET_COLUMNS/MATCH_SHEET_COLUMNS)",
+        "skills/recon_assist/references/sku-match-methodology.md"
+      ],
+      "doc": "docs/specs/2026-11-17-sku-match-revival.md",
+      "note": "业务口径 SSOT=methodology；明细 Excel 31 列（内部字段 数据来源/店铺编码/成本缺失原因 仅底稿csv）；白名单差异=冲发出商品数量笔误修正/OMS数据时点漂移/字典更新；入口接线遗留见 spec 实施现状"
+    },
     "regression": {
       "paths": [
         "scripts/verify_export_baseline.py(工作区)",
         "scripts/verify_batch2.py(工作区)",
-        "scripts/run_oct.py(10月批量+基准比对)"
+        "scripts/run_oct.py(10月账单批量+基准比对)",
+        "scripts/run_match_oct_all.py(10月SKU对账全平台批量+基准比对)",
+        "scripts/diagnose_match_diff.py(差异行级归因)",
+        "scripts/verify_match_totals.py(秒退相等/货款=分摊/与bill_goods对平 三项校验)"
       ],
-      "note": "全部数值列合计比对防假绿；vip 大文件后台跑落日志"
+      "note": "全部数值列合计比对防假绿（基准文本数值列统一转float）；vip 大文件后台跑落日志；2026-11-18 实测 38 店三项校验全OK、差异均归因数据漂移"
     },
     "bugfixlog": {
       "paths": [
@@ -225,6 +242,7 @@
     "raw_bills_dir": "E:/AIcoding_project/xbot_robot/历史运行结果/原始账单",
     "source_rpa": "E:/AIcoding_project/xbot_robot/bill_arr.py",
     "results_dir_custom": "C:/Users/贺杰/Desktop/账单（settings.results_dir）",
+    "sku_baseline_dir": "C:/Users/贺杰/Desktop/2026.10月账单/SKU匹配汇总-已有结果可作为对照验证（影刀10月SKU匹配基准；顶层同名优先，JD/XHS/AKC 按店铺编码定位）",
     "github_remote": "https://github.com/Jhtony123/recon_workbench.git"
   }
 }

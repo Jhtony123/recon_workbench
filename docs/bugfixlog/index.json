@@ -2,11 +2,19 @@
   "meta": {
     "name": "recon_workbench Bug Fix Log",
     "version": "1.0.0",
-    "updated": "2026-11-17",
+    "updated": "2026-11-18",
     "description": "已落地 bug 修复目录（按日期分子目录）；与 codemap task_lookup.bugfixlog 联动；参照 AI_RPA docs/bugfixlog 规范",
     "layout": "YYYY-MM-DD/<kebab-short-name>.md"
   },
   "entries": [
+    {
+      "id": "2026-11-18-detail-sheet-drop-internal-columns",
+      "date": "2026-11-18",
+      "title": "收款/退款匹配明细裁掉数据来源/店铺编码/成本缺失原因三个内部附加列（用户确认，对齐影刀基准31列；spec B3 白名单作废）",
+      "area": ["export_format"],
+      "status": "fixed",
+      "file": "2026-11-18/detail-sheet-drop-internal-columns.md"
+    },
     {
       "id": "2026-11-17-sku-match-baseline-alignment",
       "date": "2026-11-17",

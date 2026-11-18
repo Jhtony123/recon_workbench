@@ -1,6 +1,6 @@
 ---
 name: recon_assist
-description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所有操作由 AI 通过 MCP 工具执行，人只提供数据源路径；管理页是只读看板+Excel下载。数据库只存店铺映射；账单整理结果落文件（交付 Excel 在批次根目录，过程底稿在 底稿/）；SKU对账/成本匹配/数据库回传/氚云对接占位暂缓。含 AI 工作流、工具清单、数据落位与财务口径纪律。"
+description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所有操作由 AI 通过 MCP 工具执行，人只提供数据源路径；管理页是只读看板+Excel下载。数据库只存店铺映射；账单整理结果落文件（交付 Excel 在批次根目录，过程底稿在 底稿/）；SKU对账已启用（core.pipeline.run_match，结果落 sku匹配/未匹配成本/；MCP/UI 入口接线遗留见 spec 实施现状）；成本匹配/数据库回传/氚云对接占位暂缓。含 AI 工作流、工具清单、数据落位与财务口径纪律。"
 ---
 
 # 对账工作台 · 插件使用说明书
@@ -42,7 +42,7 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 
 用户决策两条：
 1. **数据库不存 SKU 对账明细结果，也不存账单整理结果，只存店铺映射。**
-2. **插件只做影刀现有能力**：账单整理（可用）+ SKU对账 / 成本匹配 / 数据库回传 / 氚云对接（**占位暂缓**）。
+2. **插件只做影刀现有能力**：账单整理（可用）+ SKU对账（**2026-11-17 启用**，不带成本）+ 成本匹配 / 数据库回传 / 氚云对接（**占位暂缓**）。
 
 因此本地 SQLite 从 11 张表收窄到 **1 张表**：
 
@@ -52,7 +52,8 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 | 平台解析规则 | `platform_rules` 表 | `{plugin}/rules/{platform}.json`（可进版本管理、可 diff） |
 | 作业留痕 | `job_log` 表 | `data/extensions/recon_workbench/logs/jobs.jsonl` |
 | 账单整理结果 | `bill_rows` / `bill_goods` 表 | 结果根目录（默认 `data/extensions/recon_workbench/results/`，可由 `save_settings` 自定义）下 `{账期}_{平台}_账单整理_{店铺}_{时间戳}/`<br>根目录只放**交付 Excel**；`底稿/` 子目录放 `manifest.json`、`*_统一明细.xlsx`、E卡底稿、`bill_detail.parquet\|.csv`、`bill_goods.parquet\|.csv` |
-| SKU对账/成本/回传结果 | `oms_rows`/`match_detail`/`pivot_*`/`writeback_log`/`cost_base` | **不落任何地方**（能力暂缓） |
+| SKU对账结果 | `oms_rows`/`match_detail`/`pivot_*`/`writeback_log` | **文件态**（2026-11-17 启用）：`{results}/{YYYY-MM}/sku匹配/未匹配成本/{批次名}/` 交付 Excel（6 sheet，明细 31 列）+ `底稿/`（match_detail/pivot_*/oms_matched csv，含内部字段）；不写任何库表 |
+| 成本/回传结果 | `cost_base`/`writeback_log` | **不落任何地方**（能力暂缓） |
 
 `storage.ALLOWED_TABLES` 是**运行时硬闸门**：任何想往退役表写的代码会抛
 `ValueError: 表名不在白名单 …（该表已在 2026-11-14 方案改版中退役）`。
@@ -70,7 +71,7 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 | 能力 | 状态 | 工具 / 页面 | 说明 |
 |---|---|---|---|
 | 账单整理 | ✅ 可用 | `start_recon(stage=bill)` · `preview_bill` · `bill_batches` · `query_bill_rows` · `#/bill` | 各平台账单 → 统一五元口径 → Excel + parquet |
-| SKU 对账 | ⏸ 暂缓 | `sku_match()` → `status=deferred` · `#/match` 占位卡 | 算法封存在 `core/pipeline_dormant.py` |
+| SKU 对账 | ✅ 核心已启用 | `core.pipeline.run_match`（批量入口 `scripts/run_match_oct_all.py`）· `#/match` 占位卡待换 | 2026-11-17 启用；⚠️ MCP `sku_match()`/`start_recon(stage=match)`/UI 表单接线遗留（spec Q8），当前真执行通道=直接调 run_match |
 | 成本匹配 | ⏸ 暂缓 | `cost_match()` → `status=deferred` · `#/cost` 占位卡 | 同上 |
 | 数据库回传 | ⏸ 暂缓 | `writeback()` → `status=deferred` · `#/writeback` 占位卡 | **不会**修改生产库任何对账标记 |
 | 氚云对接 | ⏸ 暂缓 | `chuanyun_sync()` → `status=deferred` · `#/chuanyun` 占位卡 | 账单整理已导出「氚云导入模板」sheet，当前靠手工导入 |
@@ -82,7 +83,8 @@ description: "对账工作台插件说明书（2026-11-16 AI 原生化）：所�
 
 ## 休眠代码（启用暂缓能力时读这里）
 
-`core/pipeline_dormant.py` = 改版前 `pipeline.py` 全文（匹配 / 分摊 / 成本 / 透视 / 回传 / 全链路），
+`core/pipeline_dormant.py` = 改版前 `pipeline.py` 的**成本 / 回传 / 全链路**封存段
+（run_match 已于 2026-11-17 搬回 `core/pipeline.py` 启用），
 三层回归全绿：账单 30/30、匹配 8/8、成本 5/5、分摊差异恒 0 分。**不在任何运行路径上**，
 直接运行会失败（依赖已退役表名，被白名单拦下）。
 
