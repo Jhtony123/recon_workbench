@@ -346,6 +346,30 @@ def save_settings(patch: dict) -> dict:
     return data
 
 
+def history_mark_path() -> Path:
+    """历史清理水位文件（2026-11-19 bugfix：清空历史后页面残留批次统计）。
+
+    清空历史只清留痕不删产出（既定纪律），但总览数字来自扫输出目录，
+    清完页面不变 → 用户报「清理失效」。水位记录清理时刻，展示层据此
+    隐藏此前整理的批次；输出文件一个不删，恢复历史=删本文件。
+    """
+    return runtime_dir() / "history_cleared.json"
+
+
+def read_history_mark() -> dict:
+    """读清理水位；损坏/缺失回落空 dict（辅助信息，不该让页面打不开）。"""
+    import json
+
+    p = history_mark_path()
+    if not p.is_file():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def results_root() -> Path:
     """结果存储根目录：用户在设置页自定义优先，缺省 runtime_dir()/results。
 

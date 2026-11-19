@@ -235,7 +235,7 @@
     },
     {
       "name": "recon_workbench__clear_history",
-      "description": "清空历史记录（2026-11-18 改版：只清插件内信息——作业留痕 logs/jobs.jsonl + downloads 下载副本；**输出目录的批次/交付Excel/底稿/汇总簿一律保留不删**）。保留店铺映射/规则/设置。必须传 confirm=yes 才执行（AI 须先向用户确认）。可选 period/platform/shop_code 按条件只删命中留痕（此时下载副本保留）；全空则留痕全清+下载副本清空。清记录后批次清单仍可见（扫输出目录的文件态），属预期行为。",
+      "description": "清空历史记录（只清插件内信息——作业留痕 logs/jobs.jsonl + downloads 下载副本；全清时记清理水位，总览/批次清单隐藏此前整理的批次，页面信息清干净；**输出目录的批次/交付Excel/底稿/汇总簿一律保留不删**，SKU对账/成本匹配/回传/氚云/透视汇总不受水位影响）。保留店铺映射/规则/设置。必须传 confirm=yes 才执行（AI 须先向用户确认）。可选 period/platform/shop_code 按条件只删命中留痕（此时下载副本保留、不记水位）。恢复历史展示=删运行时目录 history_cleared.json。",
       "permission": "action",
       "action": "clear_history",
       "params": ["confirm", "period", "platform", "shop_code"],

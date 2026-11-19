@@ -97,7 +97,8 @@ def bill_pivot_summary(
         raise ReconError("账单透视汇总必须指定账期 period（YYYY-MM）")
 
     batches = artifacts.list_batches(period=period, platform=platform,
-                                     shop_code=shop_code, limit=500)
+                                     shop_code=shop_code, limit=500,
+                                     include_hidden=True)
     if bill_batch_id:
         target = str(bill_batch_id).strip()
         batches = [b for b in batches if target in (b.batch_id, b.dir.name)]

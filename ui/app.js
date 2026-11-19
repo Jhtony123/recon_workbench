@@ -10,7 +10,8 @@
  *   · 移除 账单整理/SKU对账/成本匹配/数据库回传/氚云对接 五个能力页——
  *     全部操作由 AI 在会话中通过 MCP 工具执行，管理页只做看板+设置
  *   · 保留四页：对账总览 / 数据源与规则 / 作业与日志 / 设置
- *   · 清空历史只清插件内记录（作业留痕+downloads 副本），输出目录文件不删
+ *   · 清空历史只清插件内记录（作业留痕+downloads 副本）+记清理水位隐藏历史批次展示，
+ *     输出目录文件不删（2026-11-19 bugfix：清完页面数字不变=「清理失效」）
  */
 "use strict";
 
@@ -215,7 +216,7 @@ async function buildAskPayload(kind) {
   if (kind === "clear") {
     const res = await tool("recon_workbench__bill_batches", { limit: 30 });
     const rows = rowsOf(res);
-    const body = `${head}\n当前账单整理批次（${rows.length} 个）：\n${JSON.stringify(rows, null, 2)}\n\n我想清理其中一部分历史记录（按账期/平台/店铺）。注意：clear_history 只清插件内记录（作业留痕/下载副本），不删输出目录文件。请先列出可清理的条件组合让我选择，确认后调用 clear_history（confirm=yes，附 period/platform/shop_code 条件）。未经我确认不要执行。`;
+    const body = `${head}\n当前账单整理批次（${rows.length} 个）：\n${JSON.stringify(rows, null, 2)}\n\n我想清理其中一部分历史记录（按账期/平台/店铺）。注意：clear_history 只清插件内记录（作业留痕/下载副本），不删输出目录文件；带条件时只删命中留痕、不影响批次展示。请先列出可清理的条件组合让我选择，确认后调用 clear_history（confirm=yes，附 period/platform/shop_code 条件）。未经我确认不要执行。`;
     return ["按条件清理历史", body];
   }
   if (kind === "rules") {
@@ -508,7 +509,7 @@ async function saveResultsDir(restore) {
 
 /** 清空历史：两步确认（WebView iframe 里 window.confirm 可能被拦，改用按钮态）。
  *  第一次点击变红字「确认清空？再点一次执行」，5 秒内再点才真正调用。
- *  2026-11-18 改版：只清插件内记录（作业留痕+downloads 副本），输出目录文件不删。 */
+ *  清插件内记录（作业留痕+downloads 副本）+记水位隐藏历史批次展示；输出目录文件不删。 */
 let clearArmed = null;
 async function clearHistoryFlow(btn) {
   if (!clearArmed || clearArmed.btn !== btn) {
@@ -521,7 +522,7 @@ async function clearHistoryFlow(btn) {
       timer: setTimeout(() => { resetClearBtn(btn); clearArmed = null; }, 5000),
     };
     clearArmed.original = original;
-    toast("只清插件内记录（作业留痕/下载副本），输出目录文件全部保留；5 秒内再点一次确认", "warn");
+    toast("将清空留痕/下载副本并隐藏历史批次展示，输出目录文件全部保留；5 秒内再点一次确认", "warn");
     return;
   }
   clearTimeout(clearArmed.timer);
@@ -539,9 +540,11 @@ async function clearHistoryFlow(btn) {
       out.innerHTML = `<p class="hint">${esc(res.summary || "")}</p>` +
         ((d.errors || []).length ? `<p class="hint">删除失败项：${esc(d.errors.join("；"))}</p>` : "");
     }
-    // 清的是留痕与下载副本：刷新总览与作业页；批次清单来自输出目录（文件保留，仍可见）
+    // 清留痕/下载副本并记水位：刷新总览与作业页，历史批次展示随之清空（文件仍保留）
     await loadHome().catch(() => {});
     await loadJobsPage().catch(() => {});
+  } catch (err) {
+    toast(humanize(err.message || err), "danger");
   } finally {
     btn.disabled = false;
   }

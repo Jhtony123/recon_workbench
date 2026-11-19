@@ -128,7 +128,7 @@ try:
     check("组合条件只删 bill-1", r["joblog_removed"] == 1
           and [x["batch_id"] for x in joblog.read_records()] == ["wb-1"])
 
-    # ---------------- 全清：留痕+downloads，输出目录仍零变化 ----------------
+    # ---------------- 全清：留痕+downloads+水位隐藏，输出目录仍零变化 ----------------
     r = artifacts.clear_history()
     check("全清留痕1条", r["joblog_removed"] == 1 and joblog.read_records() == [])
     check("全清 downloads 2个", r["downloads_removed"] == 2 and not list(dl.iterdir()))
@@ -139,13 +139,30 @@ try:
           and (d1 / "底稿" / "manifest.json").is_file())
     check("sku匹配/汇总/手工目录仍在", sku_dir.is_dir() and sum_dir.is_dir() and manual.is_dir())
 
-    # 清记录后批次清单仍可见（文件态，预期行为）
+    # 2026-11-19 bugfix：全清记水位 → 展示层隐藏历史批次（页面清干净），文件不删
+    check("全清记水位 batches_hidden=2", r.get("batches_hidden") == 2, str(r))
+    check("水位文件已落盘", cfg.history_mark_path().is_file())
     batches = artifacts.list_batches(limit=50)
-    check("清记录后批次仍可见（2个）", len(batches) == 2, str([b.dir.name for b in batches]))
+    check("清后展示层批次清空（0个）", len(batches) == 0, str([b.dir.name for b in batches]))
     cov = artifacts.coverage(limit=50)
-    check("清记录后覆盖统计仍在", cov["batch_count"] == 2 and cov["detail_rows"] == 2)
+    check("清后覆盖统计归零", cov["batch_count"] == 0 and cov["detail_rows"] == 0)
+    # 执行链路不受水位影响：include_hidden / resolve_batch 仍能找到批次
+    all_b = artifacts.list_batches(limit=50, include_hidden=True)
+    check("执行链路仍见全部批次（2个）", len(all_b) == 2)
+    rb = artifacts.resolve_batch(period="2026-10", platform="douyin", shop_code="DY001")
+    check("resolve_batch 不受水位影响", rb is not None and rb.shop_code == "DY001")
+    # 水位之后新整理的批次重新可见
+    d3, fp3 = make_bill_batch("2026-10-抖音-新店-DY003", shop="DY003")
+    vis = artifacts.list_batches(limit=50)
+    check("水位后新批次可见（1个）", len(vis) == 1 and vis[0].shop_code == "DY003",
+          str([b.dir.name for b in vis]))
+    # 恢复历史展示 = 删水位文件
+    cfg.history_mark_path().unlink()
+    check("删水位后历史展示恢复（3个）", len(artifacts.list_batches(limit=50)) == 3)
 
     # ---------------- actions 层：confirm 门 + 归一出口 ----------------
+    # 上面新增了 d3 批次，快照基线随之刷新（零变化断言针对 actions 执行本身）
+    before = snapshot(results)
     import actions  # noqa: E402
     joblog.save_job_log("bill-3", stage="bill", status="success", platform="douyin",
                         shop_code="DY001", period="2026-10")
@@ -173,7 +190,8 @@ try:
           not re.search(r"loadBillPage|loadMatchPage|loadCostPage|loadWritebackPage|"
                         r"loadChuanyunPage|runMatchFlow|runCostFlow|runWritebackFlow|runChuanyunFlow", js))
     check("js 无占位卡残留", "PLACEHOLDER_META" not in js and "renderPlaceholder" not in js)
-    check("html 清空文案=只清插件内记录", "只清<b>插件内记录</b>" in html)
+    check("html 清空文案=清插件内记录+隐藏历史批次",
+          "清<b>插件内记录</b>" in html and "隐藏此前整理的历史批次" in html)
     check("js 清空 toast 明示文件保留", "输出目录文件全部保留" in js)
     # 保留页关键节点仍在
     for node in ("home-metrics", "home-capabilities", "shop-preview", "rule-table",

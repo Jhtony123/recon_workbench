@@ -1611,7 +1611,8 @@ def run_chuanyun(
     mode = "预检（dry-run，不向氚云发送任何请求）" if dry_run else "真实推送"
     progress(5, f"氚云对接 {period} · {mode}")
 
-    batches = artifacts.list_batches(period=period, platform=plat, shop_code=shop_code, limit=500)
+    batches = artifacts.list_batches(period=period, platform=plat, shop_code=shop_code,
+                                     limit=500, include_hidden=True)
     if bill_batch_id:
         target = str(bill_batch_id).strip()
         batches = [b for b in batches if target in (b.batch_id, b.dir.name)]

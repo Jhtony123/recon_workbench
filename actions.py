@@ -724,19 +724,21 @@ def save_settings(results_dir: Any = None, **_) -> dict:
 
 def clear_history(confirm: Any = "", period: Any = "", platform: Any = "",
                   shop_code: Any = "", **_) -> dict:
-    """清空历史记录（2026-11-18 改版：只清插件内信息，**不删输出目录任何文件**）。
+    """清空历史记录（只清插件内信息，**不删输出目录任何文件**）。
 
     清理范围：作业留痕 logs/jobs.jsonl（支持条件过滤）+ downloads 下载副本
-    （插件运行时缓存，仅全清时删）。输出目录（results/ 或自定义 results_dir）
-    下的批次目录、交付 Excel、底稿、汇总簿一律原样保留——批次清单是扫目录
-    得来的文件态，清记录后批次仍可见，这是预期行为。
+    （插件运行时缓存，仅全清时删）+ 全清时记「清理水位」：总览/批次清单等
+    展示层隐藏此前整理的批次（2026-11-19 bugfix：清完页面数字不变=清理失效）。
+    输出目录（results/ 或自定义 results_dir）下的批次目录、交付 Excel、底稿、
+    汇总簿一律原样保留；执行链路（SKU对账/成本匹配/回传/氚云/透视汇总）不受
+    水位影响。恢复历史展示=删运行时目录 history_cleared.json。
     保留：店铺映射、rules/ 规则、settings.json。
     必须显式传 confirm="yes" 才执行（UI 二次确认 / AI 先向用户确认），防误触。
     细粒度：给 period/platform/shop_code 任一时只删命中条件的作业留痕，
-    downloads 副本保留；全空则留痕全清 + downloads 清空。
+    downloads 副本保留、不记水位；全空则留痕全清 + downloads 清空 + 记水位。
     """
     if str(confirm or "").strip().lower() != "yes":
-        return _fail("清空历史需要二次确认（confirm=yes）。只清插件内记录（作业留痕/下载副本），输出目录文件不受影响。")
+        return _fail("清空历史需要二次确认（confirm=yes）。只清插件内记录（作业留痕/下载副本）并隐藏历史批次展示，输出目录文件不受影响。")
     try:
         res = artifacts.clear_history(period=str(period or "").strip(),
                                       platform=str(platform or "").strip(),
@@ -746,10 +748,11 @@ def clear_history(confirm: Any = "", period: Any = "", platform: Any = "",
     if res.get("scoped"):
         sc = res.get("scope") or {}
         cond = "/".join(v for v in (sc.get("period"), sc.get("platform"), sc.get("shop_code")) if v)
-        msg = f"已按条件（{cond}）清理作业留痕 {res['joblog_removed']} 条（输出目录文件与下载副本保留）"
+        msg = f"已按条件（{cond}）清理作业留痕 {res['joblog_removed']} 条（输出目录文件与下载副本保留，批次展示不受影响）"
     else:
-        msg = (f"已清空插件内记录：作业留痕 {res['joblog_removed']} 条、下载副本 {res['downloads_removed']} 个"
-               "（输出目录的批次/Excel/底稿全部保留）")
+        msg = (f"已清空插件内记录：作业留痕 {res['joblog_removed']} 条、下载副本 {res['downloads_removed']} 个，"
+               f"页面已隐藏历史批次 {res.get('batches_hidden', 0)} 个"
+               "（输出目录的批次/Excel/底稿全部保留，后续作业仍可使用）")
     if res["errors"]:
         msg += f"；{len(res['errors'])} 项删除失败（可能被占用）"
     return _ok(msg, res)

@@ -585,8 +585,40 @@ def parse_dir_name(name: str) -> dict[str, str]:
     return {"period": "", "platform": "", "shop_code": "", "shop_name": "", "stamp": ""}
 
 
+def _batch_created_ts(batch_dir: Path, man: dict[str, Any]) -> float:
+    """批次落盘时间戳（水位隐藏用）：manifest created_at 优先，回落目录 mtime。
+
+    VIP 多旬共用目录取最新一份 manifest（与 manifest_path_for 同口径）；
+    重跑会重写 manifest，时间戳随之刷新——水位之后的重跑批次重新可见。
+    """
+    ts = str(man.get("created_at") or "")
+    if ts:
+        try:
+            return time.mktime(time.strptime(ts, "%Y-%m-%d %H:%M:%S"))
+        except (ValueError, OverflowError):
+            pass
+    try:
+        return Path(batch_dir).stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _history_hidden(batch_dir: Path, man: dict[str, Any]) -> bool:
+    """展示层水位判定：批次是否落盘于最近一次「清空历史」之前。
+
+    无水位（从未清空/已恢复）→ 不隐藏。水位损坏 → 不隐藏（宁可多显示）。
+    """
+    from .config import read_history_mark
+
+    mark = read_history_mark()
+    cleared_at = float(mark.get("cleared_at") or 0)
+    if cleared_at <= 0:
+        return False
+    return _batch_created_ts(batch_dir, man) < cleared_at
+
+
 def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") -> dict[str, Any]:
-    """清空历史记录（2026-11-18 改版：**只清插件内信息，绝不删输出目录文件**）。
+    """清空历史记录（**只清插件内信息，绝不删输出目录文件**）。
 
     用户需求：清空记录 ≠ 删除产出。结果目录（默认 results/ 或自定义 results_dir）
     下的批次目录、交付 Excel、底稿、汇总簿一律**原样保留**——那是财务产出，
@@ -595,14 +627,17 @@ def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") 
     清理范围（全部是插件运行时目录 data/extensions/recon_workbench/ 内的信息）：
       · logs/jobs.jsonl 作业留痕（joblog.clear_records，支持条件过滤）
       · downloads/ 下载副本（插件专用缓存目录，非用户输出目录；仅全清时删）
+      · 全清时记「清理水位」history_cleared.json：总览/批次清单等**展示层**
+        隐藏水位之前整理的批次（2026-11-19 bugfix：清完页面数字不变=「清理失效」）。
+        隐藏只影响展示，SKU对账/成本匹配/回传/氚云/透视汇总仍能看到全部批次；
+        水位之后的重跑批次重新可见。恢复历史展示=删 history_cleared.json。
     保留：输出目录全部文件、店铺映射（数据库唯一表）、rules/ 规则、settings.json。
 
     细粒度：给 period/platform/shop_code 任一时只删**命中条件的作业留痕**，
-    downloads 副本保留；全空则留痕全清 + downloads 副本清空。
-    批次清单是扫输出目录得来的（文件态），清记录后批次仍可见——这是预期行为。
+    downloads 副本保留、不记水位；全空则留痕全清 + downloads 清空 + 记水位。
     """
     from . import joblog
-    from .config import runtime_dir
+    from .config import history_mark_path, runtime_dir
     from .platforms.registry import parse_platform
 
     scoped = bool(period or platform or shop_code)
@@ -613,6 +648,8 @@ def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") 
         period=period, platform=want_platform or platform, shop_code=shop_code)
 
     dl_removed = 0
+    hidden_count = 0
+    cleared_at = 0.0
     if not scoped:
         dl_dir = runtime_dir() / "downloads"
         if dl_dir.is_dir():
@@ -623,6 +660,24 @@ def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") 
                         dl_removed += 1
                     except OSError as exc:
                         errors.append(f"downloads/{f.name}: {exc}")
+        # 回显用：水位之后磁盘上全部既有批次都会被隐藏（含上次水位已隐藏的）
+        hidden_count = len(list_batches(limit=0, include_hidden=True))
+        cleared_at = time.time()
+        mark = {
+            "cleared_at": cleared_at,
+            "cleared_at_text": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "note": "清空历史水位：展示层隐藏此前整理的批次；输出目录文件全部保留。"
+                    "删除本文件即恢复历史展示。",
+        }
+        mp = history_mark_path()
+        try:
+            mp.parent.mkdir(parents=True, exist_ok=True)
+            tmp = mp.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(mark, ensure_ascii=False, indent=2) + "\n",
+                           encoding="utf-8")
+            tmp.replace(mp)
+        except OSError as exc:
+            errors.append(f"history_cleared.json: {exc}")
     return {
         # 兼容旧键名（老 UI/脚本可能读）：恒 0 —— 输出目录文件一个不删
         "batches_deleted": 0,
@@ -630,6 +685,8 @@ def clear_history(*, period: str = "", platform: str = "", shop_code: str = "") 
         "output_files_kept": True,
         "downloads_removed": dl_removed,
         "joblog_removed": log_removed,
+        "batches_hidden": hidden_count,
+        "cleared_at": cleared_at,
         "kept_dirs": [],
         "errors": errors,
         "scope": {"period": period, "platform": want_platform or platform, "shop_code": shop_code},
@@ -643,11 +700,17 @@ def list_batches(
     platform: str = "",
     shop_code: str = "",
     limit: int = 50,
+    include_hidden: bool = False,
 ) -> list[BillBatch]:
     """扫 results/ 列出账单整理批次（**新→旧**：按目录名内时间戳倒序）。
 
     目录名解析不出的（手工建的目录、旧版命名）仍会返回，只是筛选条件不生效 ——
     宁可多列一条，也不要因为一个目录命名不规范就整页空白。
+
+    2026-11-19 bugfix：默认应用「清空历史」水位（_history_hidden），隐藏水位
+    之前整理的批次——只影响展示（总览/批次清单/数据态）。**执行链路**
+    （SKU对账/成本匹配/回传/氚云/透视汇总/按 batch_id 定位）必须传
+    include_hidden=True：清历史不删产出，也不该让后续作业找不到输入。
     """
     root = output_dir()
     if not root.is_dir():
@@ -660,6 +723,8 @@ def list_batches(
                     reverse=True):
         meta = parse_dir_name(d.name)
         man = read_manifest(manifest_path_for(d))
+        if not include_hidden and _history_hidden(d, man):
+            continue
         # 新目录名可能不含店铺段（vip/akc），筛选用 manifest 回落
         eff_period = str(man.get("period") or meta.get("period") or "")
         eff_platform = str(man.get("platform") or meta.get("platform") or "")
@@ -744,7 +809,9 @@ def resolve_batch(
                         )
         return None
 
-    batches = list_batches(period=period, platform=platform, shop_code=shop_code, limit=1)
+    # 执行链路定位：不受清理水位影响（清历史不删产出，作业仍要能找到输入）
+    batches = list_batches(period=period, platform=platform, shop_code=shop_code,
+                           limit=1, include_hidden=True)
     return batches[0] if batches else None
 
 
